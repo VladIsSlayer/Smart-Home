@@ -1,0 +1,111 @@
+@startuml
+skinparam classAttributeIconSize 0
+title Умный дом - диаграмма классов (ЛР1)
+
+abstract class SmartDevice {
+  +id: str
+  +name: str
+  +status: str
+  +schedule: list
+  +connect(): dict
+  +executeCommand(command: str): str
+  +saveSchedule(scheduleData: list): str
+  +updateSchedule(scheduleData: list): str
+}
+
+class RobotVacuum {
+  +batteryLevel: int
+  +dustContainerLevel: int
+  +roomMapVersion: int
+  +roomMap: list
+  +startCleaning(mode: str, roomMap: list): str
+  +updateRoomMap(newRoomMap: list): str
+  +goToDock(): str
+}
+
+class SmartCurtains {
+  +positionPercent: int
+  +mode: str
+  +open(percent: int): str
+  +close(): str
+}
+
+class SmartKettle {
+  +waterLevelMl: int
+  +targetTemperature: int
+  +currentWaterTemperature: float
+  +isBoiling: bool
+  +boil(targetTemp: int): str
+  +keepWarm(minutes: int): str
+  +getCurrentWaterTemperature(): float
+}
+
+class TemperatureControl {
+  +temperature: float
+  +targetTemperature: float
+  +setTargetTemperature(temp: float): str
+  +getCurrentTemperature(): float
+}
+
+class HumidityControl {
+  +humidity: float
+  +targetHumidity: float
+  +setTargetHumidity(humidity: float): str
+  +getCurrentHumidity(): float
+}
+
+class SmartLighting {
+  +brightness: int
+  +colorTemperature: int
+  +setBrightness(value: int): str
+  +setColorTemperature(value: int): str
+}
+
+class MainControlUnit {
+  +deviceList: list[SmartDevice]
+  +command_queue: list[dict]
+  +addDevice(device: SmartDevice): str
+  +dltDevice(deviceId: str): str
+  +createCommand(deviceId: str, command: str): dict
+  +getData(deviceId: str): dict
+  +sentToDataBase(payload: dict): None
+}
+
+class Database {
+  +name: str
+  +deviceScheduleList: dict[str, list]
+  +saveData(deviceId: str, payload: dict): None
+  +saveCommandLog(deviceId: str, command: str, result: str): None
+  +saveDeviceSchedule(deviceId: str, scheduleData: list): None
+  +getDeviceHistory(deviceId: str): list
+}
+
+class ChildUI {
+  +showBasicStatus(data: dict): None
+  +controlAllowedDevices(): str
+  +sendCommand(deviceId: str, command: str): bool
+}
+
+class ParentUI {
+  +showFullStatus(data: dict): None
+  +configureAutomationRules(): str
+  +sendCommand(deviceId: str, command: str): bool
+}
+
+SmartDevice <|-- RobotVacuum
+SmartDevice <|-- SmartCurtains
+SmartDevice <|-- SmartKettle
+SmartDevice <|-- TemperatureControl
+SmartDevice <|-- HumidityControl
+SmartDevice <|-- SmartLighting
+
+MainControlUnit "1" -- "1" Database : пишет/читает
+SmartDevice "1..*" --> "1" MainControlUnit : отправляет телеметрию
+MainControlUnit "1" --> "1..*" SmartDevice : отправляет команды
+
+ChildUI "1" -- "1" MainControlUnit : запрашивает данные
+ParentUI "1" -- "1" MainControlUnit : настраивает систему
+ChildUI "1" --> "1" MainControlUnit : отправляет команду
+ParentUI "1" --> "1" MainControlUnit : отправляет команду
+
+@enduml
