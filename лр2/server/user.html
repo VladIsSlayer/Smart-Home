@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Smart Home - Пользователь</title>
+</head>
+<body>
+    <main class="container">
+        <section class="card">
+            <header class="panel-header">
+                <h1>Панель пользователя 😊</h1>
+                <div class="button-group">
+                    <button class="btn btn-secondary" type="button" data-style-toggle>Ночной стиль</button>
+                    <a class="btn btn-secondary" href="index.html">Сменить роль</a>
+                </div>
+            </header>
+
+            <div class="status-row">
+                <span class="status-badge online">Дом онлайн</span>
+                <span class="status-badge">Роль: пользователь</span>
+                <span class="status-badge">Управляемых устройств: 6</span>
+                <span class="status-badge" id="userDateTime">--.--.---- --:--:--</span>
+            </div>
+
+            <div class="button-group">
+                <button class="btn" type="button" data-toggle-target="userSummary">Показать сводку</button>
+            </div>
+            <p id="userActionMessage" class="device-meta"></p>
+
+            <div class="grid">
+                <article class="tile is-hidden" id="userSummary">
+                    <h2 class="section-title">Текущий статус дома 📊</h2>
+                    <ul>
+                        <li>Робот-пылесос: заряд 82 %</li>
+                        <li>Шторы: открыты на 60 %</li>
+                        <li>Чайник: вода 65 %, нагрев выключен</li>
+                        <li>Температура: 22 C (цель 24 C)</li>
+                        <li>Влажность: 47 % (цель 50 %)</li>
+                        <li>Лампы: яркость 70 %, теплый свет</li>
+                    </ul>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Умный чайник ☕</h2>
+                    <div class="power-row">
+                        <span>Состояние чайника:</span>
+                        <span id="userKettleIndicator" class="power-indicator"></span>
+                        <strong id="userKettleStateText">Выключен</strong>
+                    </div>
+                    <p class="device-meta">Текущая температура: <strong id="userKettleCurrentTemp">24</strong> C</p>
+                    <div class="button-group">
+                        <button id="userKettleOnBtn" class="btn" type="button" data-kettle-action="on">Включить чайник</button>
+                        <button id="userKettleOffBtn" class="btn" type="button" data-kettle-action="off">Выключить чайник</button>
+                    </div>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Умные шторы 🪟</h2>
+                    <div class="button-group">
+                        <button id="userCurtainsOpenBtn" class="btn" type="button">Открыть шторы</button>
+                        <button id="userCurtainsCloseBtn" class="btn" type="button">Закрыть шторы</button>
+                    </div>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Освещение 💡</h2>
+                    <form class="form-grid">
+                        <label for="lightLevel">Яркость ламп (%):</label>
+                        <input id="lightLevel" type="range" min="0" max="100" value="70">
+
+                        <div class="color-menu">
+                            <h3>Цвет ламп (RGB)</h3>
+                            <div class="color-preview-wrap">
+                                <div id="userLampColorPreview" class="color-preview"></div>
+                                <p id="userLampColorValue" class="device-meta">RGB(255, 180, 90)</p>
+                            </div>
+                            <table class="rgb-table">
+                                <tbody>
+                                    <tr>
+                                        <td>R</td>
+                                        <td><input id="userLampR" type="number" min="0" max="255" value="255"></td>
+                                        <td>0-255</td>
+                                    </tr>
+                                    <tr>
+                                        <td>G</td>
+                                        <td><input id="userLampG" type="number" min="0" max="255" value="180"></td>
+                                        <td>0-255</td>
+                                    </tr>
+                                    <tr>
+                                        <td>B</td>
+                                        <td><input id="userLampB" type="number" min="0" max="255" value="90"></td>
+                                        <td>0-255</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <button id="userLightsApplyBtn" class="btn" type="button">Сохранить свет</button>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Климат (только просмотр) 🌡️</h2>
+                    <ul>
+                        <li>Температура сейчас: 22 C</li>
+                        <li>Целевая температура: 24 C</li>
+                        <li>Влажность сейчас: 47 %</li>
+                        <li>Целевая влажность: 50 %</li>
+                    </ul>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Устройства дома 🧩</h2>
+                    <div class="device-manager">
+                        <ul id="userDeviceList"></ul>
+                    </div>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Робот-пылесос 🤖</h2>
+                    <p class="device-meta">Состояние: <strong id="userVacuumState">Ожидает запуска</strong></p>
+                    <p class="device-meta">Карта дома: <strong id="userMapStatus">не загружена</strong></p>
+                    <div class="button-group">
+                        <button id="userVacuumStartBtn" class="btn" type="button" data-vacuum-state-target="userVacuumState" data-vacuum-state="Запущен">Старт уборки</button>
+                        <button id="userVacuumPauseBtn" class="btn" type="button" data-vacuum-state-target="userVacuumState" data-vacuum-state="Ожидает запуска">Пауза</button>
+                        <button id="userVacuumDockBtn" class="btn" type="button" data-vacuum-state-target="userVacuumState" data-vacuum-state="Ожидает запуска">Возврат на базу</button>
+                        <button class="btn" id="viewMapBtnUser" type="button">Просмотр карты дома</button>
+                    </div>
+                </article>
+
+                <article class="tile tile-muted">
+                    <h2 class="section-title">Ограничения доступа 🔒</h2>
+                    <ul>
+                        <li>Нельзя менять целевую температуру</li>
+                        <li>Нельзя менять целевую влажность</li>
+                        <li>Нельзя редактировать сценарии</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+    </main>
+    <script src="script.js?v=2"></script>
+</body>
+</html>
