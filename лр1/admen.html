@@ -15,17 +15,24 @@
             </header>
 
             <p class="muted">
-                Полный доступ к системе: настройка устройств, сценариев, пользователей и журналов событий.
+                Полный доступ к тем же 5 устройствам: расширенные настройки, режимы и расписание.
             </p>
+
+            <div class="status-row">
+                <span class="status-badge online">Система онлайн</span>
+                <span class="status-badge">Режим: ручной контроль</span>
+                <span class="status-badge">Активных устройств: 5</span>
+            </div>
 
             <div class="grid">
                 <article class="tile">
                     <h2>Устройства дома</h2>
                     <ul>
-                        <li>Датчик температуры: 22 °C</li>
-                        <li>Датчик влажности: 47 %</li>
-                        <li>Камера входа: активна</li>
                         <li>Умный замок: закрыт</li>
+                        <li>Очиститель/увлажнитель: режим AUTO, влажность 47 %</li>
+                        <li>Умные шторы: 60 % открыты</li>
+                        <li>Умные лампы: 70 % яркости, теплый свет</li>
+                        <li>Умная кофемашина: готова к запуску</li>
                     </ul>
                 </article>
 
@@ -34,34 +41,38 @@
                     <form class="form-grid">
                         <label for="targetDevice">Устройство:</label>
                         <select id="targetDevice">
-                            <option>Климат-контроль</option>
-                            <option>Освещение</option>
-                            <option>Сигнализация</option>
+                            <option>Умный замок</option>
+                            <option>Очиститель/увлажнитель воздуха</option>
+                            <option>Умные шторы</option>
+                            <option>Умные лампы</option>
+                            <option>Умная кофемашина</option>
                         </select>
 
                         <label for="command">Команда:</label>
-                        <input id="command" type="text" placeholder="Например: ON / OFF / AUTO">
+                        <input id="command" type="text" placeholder="Например: LOCK / AUTO / OPEN / 70% / BREW">
 
                         <button class="btn btn-admin" type="button">Отправить команду</button>
                     </form>
                 </article>
 
                 <article class="tile">
-                    <h2>Управление пользователями</h2>
+                    <h2>Расширенные настройки (админ)</h2>
                     <ul>
-                        <li>Родитель: полный доступ</li>
-                        <li>Ребенок: ограниченный доступ</li>
-                        <li>Гость: только просмотр камер</li>
+                        <li>Замок: автозапирание через 30 сек</li>
+                        <li>Увлажнитель: целевая влажность 45-50 %</li>
+                        <li>Шторы: утренний сценарий на 07:30</li>
+                        <li>Лампы: ночной режим с 23:00</li>
+                        <li>Кофемашина: прогрев в 08:00</li>
                     </ul>
-                    <button class="btn" type="button">Добавить пользователя</button>
+                    <button class="btn" type="button">Изменить расписание</button>
                 </article>
 
                 <article class="tile">
                     <h2>Журнал событий</h2>
                     <ul>
-                        <li>15:31 - Изменена температура до 22 °C</li>
-                        <li>15:27 - Дверь закрыта удаленно</li>
-                        <li>15:20 - Добавлен пользователь "Гость"</li>
+                        <li>15:31 - Лампы переведены на 70 % яркости</li>
+                        <li>15:27 - Замок закрыт удаленно</li>
+                        <li>15:20 - Кофемашина запущена по сценарию "Утро"</li>
                     </ul>
                 </article>
             </div>
