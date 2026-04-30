@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Smart Home - Выбор интерфейса</title>
+</head>
+<body>
+    <main class="container">
+        <section class="card auth-card">
+            <h1>Smart Home</h1>
+            <p class="muted">
+                Лабораторная работа №1: выберите тип пользователя для входа в интерфейс.
+            </p>
+
+            <div class="button-group">
+                <a class="btn" href="user.html">Войти как пользователь</a>
+            </div>
+
+            <hr>
+
+            <form id="adminForm" class="form-grid">
+                <label for="adminPin">Вход администратора (PIN):</label>
+                <input
+                    id="adminPin"
+                    name="adminPin"
+                    type="password"
+                    placeholder="Введите PIN"
+                    autocomplete="off"
+                    required
+                >
+                <button class="btn btn-admin" type="submit">Войти как администратор</button>
+            </form>
+
+            <p id="authMessage" class="message" aria-live="polite"></p>
+            <p class="hint">
+                Тестовый PIN: <code>1234</code>
+            </p>
+        </section>
+    </main>
+
+    <script>
+        const ADMIN_PIN = "1234";
+
+        document.getElementById("adminForm").addEventListener("submit", function (event) {
+            event.preventDefault();
+            const pin = document.getElementById("adminPin").value.trim();
+            const message = document.getElementById("authMessage");
+
+            if (pin === ADMIN_PIN) {
+                localStorage.setItem("smartHomeRole", "admin");
+                window.location.href = "admen.html";
+                return;
+            }
+
+            localStorage.removeItem("smartHomeRole");
+            message.textContent = "Неверный PIN. Доступ администратора запрещен.";
+            message.classList.add("error");
+        });
+    </script>
+</body>
+</html>

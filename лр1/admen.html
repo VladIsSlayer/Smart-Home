@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Smart Home - Администратор</title>
+</head>
+<body>
+    <main class="container">
+        <section class="card">
+            <header class="panel-header">
+                <h1>Панель администратора</h1>
+                <a class="btn btn-secondary" href="index.html">Выйти</a>
+            </header>
+
+            <p class="muted">
+                Полный доступ к системе: настройка устройств, сценариев, пользователей и журналов событий.
+            </p>
+
+            <div class="grid">
+                <article class="tile">
+                    <h2>Устройства дома</h2>
+                    <ul>
+                        <li>Датчик температуры: 22 °C</li>
+                        <li>Датчик влажности: 47 %</li>
+                        <li>Камера входа: активна</li>
+                        <li>Умный замок: закрыт</li>
+                    </ul>
+                </article>
+
+                <article class="tile">
+                    <h2>Управление оборудованием</h2>
+                    <form class="form-grid">
+                        <label for="targetDevice">Устройство:</label>
+                        <select id="targetDevice">
+                            <option>Климат-контроль</option>
+                            <option>Освещение</option>
+                            <option>Сигнализация</option>
+                        </select>
+
+                        <label for="command">Команда:</label>
+                        <input id="command" type="text" placeholder="Например: ON / OFF / AUTO">
+
+                        <button class="btn btn-admin" type="button">Отправить команду</button>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2>Управление пользователями</h2>
+                    <ul>
+                        <li>Родитель: полный доступ</li>
+                        <li>Ребенок: ограниченный доступ</li>
+                        <li>Гость: только просмотр камер</li>
+                    </ul>
+                    <button class="btn" type="button">Добавить пользователя</button>
+                </article>
+
+                <article class="tile">
+                    <h2>Журнал событий</h2>
+                    <ul>
+                        <li>15:31 - Изменена температура до 22 °C</li>
+                        <li>15:27 - Дверь закрыта удаленно</li>
+                        <li>15:20 - Добавлен пользователь "Гость"</li>
+                    </ul>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        if (localStorage.getItem("smartHomeRole") !== "admin") {
+            alert("Доступ только для администратора.");
+            window.location.href = "index.html";
+        }
+    </script>
+</body>
+</html>
