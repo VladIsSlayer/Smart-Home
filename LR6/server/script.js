@@ -1,0 +1,292 @@
+function clamp(value, min, max) {
+    const number = Number(value);
+    if (Number.isNaN(number)) return min;
+    return Math.max(min, Math.min(max, number));
+}
+
+function showMessage(text, isError = false) {
+    const adminMsg = document.getElementById("adminActionMessage");
+    const userMsg = document.getElementById("userActionMessage");
+    const target = adminMsg || userMsg;
+    if (!target) return;
+    target.textContent = text;
+    target.style.color = isError ? "#b92020" : "";
+}
+
+function setupSummaryToggles() {
+    document.querySelectorAll("[data-toggle-target]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const target = document.getElementById(button.getAttribute("data-toggle-target"));
+            if (!target) return;
+            const hidden = target.classList.toggle("is-hidden");
+            button.textContent = hidden ? "Показать сводку" : "Скрыть сводку";
+        });
+    });
+}
+
+function setupThemeToggle() {
+    const key = "smartHomeTheme";
+    const applyTheme = (theme) => {
+        document.body.classList.toggle("dark-theme", theme === "dark");
+        document.querySelectorAll("[data-style-toggle]").forEach((toggle) => {
+            toggle.textContent = theme === "dark" ? "Светлый стиль" : "Ночной стиль";
+        });
+    };
+    applyTheme(localStorage.getItem(key) || "light");
+    document.querySelectorAll("[data-style-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const next = document.body.classList.contains("dark-theme") ? "light" : "dark";
+            localStorage.setItem(key, next);
+            applyTheme(next);
+        });
+    });
+}
+
+function updateDateTimeLocal() {
+    const now = new Date().toLocaleString("ru-RU");
+    ["adminDateTime", "userDateTime"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = now;
+    });
+}
+
+function ajaxGet(url, onSuccess, onError) {
+    fetch(url)
+        .then((response) => response.json())
+        .then(onSuccess)
+        .catch((error) => {
+            const msg = `Ошибка запроса ${url}: ${error.message}`;
+            if (onError) onError(msg);
+            else showMessage(msg, true);
+        });
+}
+
+function buildQuery(params) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    const text = query.toString();
+    return text ? `?${text}` : "";
+}
+
+function controlGet(path, params, onSuccess) {
+    ajaxGet(`${path}${buildQuery(params)}`, (data) => {
+        if (data.message) showMessage(data.message, !data.ok);
+        if (onSuccess) onSuccess(data);
+        connectAllThings();
+    });
+}
+
+// --- Мониторинг (ЛР3) ---
+
+function connectRobotVacuum() {
+    ajaxGet("/connect_robot_vacuum", (data) => {
+        const stateText = data.cleaningState === "running" ? "Уборка" : data.cleaningState === "docked" ? "На базе" : "На связи";
+        const adminState = document.getElementById("adminVacuumState");
+        const userState = document.getElementById("userVacuumState");
+        if (adminState) adminState.textContent = `${stateText}, заряд ${data.batteryLevel}%`;
+        if (userState) userState.textContent = `${stateText}, заряд ${data.batteryLevel}%`;
+        const adminSummary = document.getElementById("adminSummaryVacuum");
+        const userSummary = document.getElementById("userSummaryVacuum");
+        if (adminSummary) adminSummary.textContent = `Пылесос: заряд ${data.batteryLevel}%`;
+        if (userSummary) userSummary.textContent = `Робот-пылесос: заряд ${data.batteryLevel}%`;
+    });
+}
+
+function connectSmartCurtains() {
+    ajaxGet("/connect_smart_curtains", (data) => {
+        const adminSlider = document.getElementById("curtainLevel");
+        if (adminSlider) adminSlider.value = String(data.positionPercent);
+        const adminSummary = document.getElementById("adminSummaryCurtains");
+        const userSummary = document.getElementById("userSummaryCurtains");
+        if (adminSummary) adminSummary.textContent = `Шторы: открыты на ${data.positionPercent} %`;
+        if (userSummary) userSummary.textContent = `Шторы: открыты на ${data.positionPercent} %`;
+    });
+}
+
+function connectSmartKettle() {
+    ajaxGet("/connect_smart_kettle", (data) => {
+        const adminTemp = document.getElementById("adminKettleCurrentTemp");
+        const userTemp = document.getElementById("userKettleCurrentTemp");
+        const adminState = document.getElementById("adminKettleStateText");
+        const userState = document.getElementById("userKettleStateText");
+        const adminIndicator = document.getElementById("adminKettleIndicator");
+        const userIndicator = document.getElementById("userKettleIndicator");
+        const tempRounded = Math.round(data.currentWaterTemperature);
+        if (adminTemp) adminTemp.value = String(tempRounded);
+        if (userTemp) userTemp.textContent = String(tempRounded);
+        const boiling = Boolean(data.isBoiling);
+        if (adminState) adminState.textContent = boiling ? "Кипячение" : "Ожидание";
+        if (userState) userState.textContent = boiling ? "Кипячение" : "Ожидание";
+        if (adminIndicator) adminIndicator.classList.toggle("on", boiling);
+        if (userIndicator) userIndicator.classList.toggle("on", boiling);
+        const kettleTarget = document.getElementById("kettleTemp");
+        if (kettleTarget) kettleTarget.value = String(data.targetTemperature);
+    });
+}
+
+function showAutomation(actions) {
+    if (!actions || !actions.length) return;
+    showMessage(`Автоматика: ${actions.join("; ")}`);
+}
+
+function connectTemperatureControl() {
+    ajaxGet("/connect_temperature_control", (data) => {
+        if (data.automation) showAutomation(data.automation);
+        const homeTemp = document.getElementById("homeTemp");
+        if (homeTemp) homeTemp.value = String(data.temperature);
+        const userCurrent = document.getElementById("userCurrentTemperature");
+        const userTarget = document.getElementById("userTargetTemperature");
+        if (userCurrent) userCurrent.textContent = String(data.temperature);
+        if (userTarget) userTarget.textContent = String(data.targetTemperature);
+        updateAdminClimateSummary();
+    });
+}
+
+function connectHumidityControl() {
+    ajaxGet("/connect_humidity_control", (data) => {
+        if (data.automation) showAutomation(data.automation);
+        const homeHumidity = document.getElementById("homeHumidity");
+        if (homeHumidity) homeHumidity.value = String(data.humidity);
+        const userCurrent = document.getElementById("userCurrentHumidity");
+        const userTarget = document.getElementById("userTargetHumidity");
+        if (userCurrent) userCurrent.textContent = String(data.humidity);
+        if (userTarget) userTarget.textContent = String(data.targetHumidity);
+        updateAdminClimateSummary();
+    });
+}
+
+function connectSmartLighting() {
+    ajaxGet("/connect_smart_lighting", (data) => {
+        const lightPower = document.getElementById("lightPower");
+        const lightLevel = document.getElementById("lightLevel");
+        if (lightPower) lightPower.value = String(data.brightness);
+        if (lightLevel) lightLevel.value = String(data.brightness);
+        const avg = clamp(Math.round((data.colorTemperature - 2000) / 18), 0, 255);
+        const r = 255;
+        const g = clamp(avg, 80, 220);
+        const b = clamp(255 - avg, 60, 200);
+        ["lampR", "lampG", "lampB", "userLampR", "userLampG", "userLampB"].forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.value = String([r, g, b][i % 3]);
+            el.dispatchEvent(new Event("input"));
+        });
+    });
+}
+
+function updateAdminClimateSummary() {
+    const t = document.getElementById("homeTemp");
+    const h = document.getElementById("homeHumidity");
+    const adminSummary = document.getElementById("adminSummaryClimate");
+    if (!t || !h || !adminSummary) return;
+    adminSummary.textContent = `Климат: ${t.value} C / ${h.value} % влажности`;
+}
+
+function setupRgbPreview(rId, gId, bId, previewId, valueId) {
+    const rInput = document.getElementById(rId);
+    const gInput = document.getElementById(gId);
+    const bInput = document.getElementById(bId);
+    const preview = document.getElementById(previewId);
+    const valueLabel = document.getElementById(valueId);
+    if (!rInput || !gInput || !bInput || !preview || !valueLabel) return;
+    const update = () => {
+        const r = clamp(rInput.value, 0, 255);
+        const g = clamp(gInput.value, 0, 255);
+        const b = clamp(bInput.value, 0, 255);
+        rInput.value = r;
+        gInput.value = g;
+        bInput.value = b;
+        preview.style.background = `rgb(${r}, ${g}, ${b})`;
+        valueLabel.textContent = `RGB(${r}, ${g}, ${b})`;
+    };
+    [rInput, gInput, bInput].forEach((input) => input.addEventListener("input", update));
+    update();
+}
+
+function connectAllThings() {
+    connectRobotVacuum();
+    connectSmartCurtains();
+    connectSmartKettle();
+    connectTemperatureControl();
+    connectHumidityControl();
+    connectSmartLighting();
+}
+
+// --- Управляющие команды (ЛР4) ---
+
+function setupControlActions() {
+    const bind = (id, handler) => {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener("click", handler);
+    };
+
+    bind("adminKettleOnBtn", () => {
+        const target = document.getElementById("kettleTemp");
+        controlGet("/control_smart_kettle", { action: "on", target_temp: target ? target.value : 90 });
+    });
+    bind("userKettleOnBtn", () => controlGet("/control_smart_kettle", { action: "on", target_temp: 90 }));
+    bind("adminKettleOffBtn", () => controlGet("/control_smart_kettle", { action: "off" }));
+    bind("userKettleOffBtn", () => controlGet("/control_smart_kettle", { action: "off" }));
+    bind("adminKettleTargetSaveBtn", () => {
+        const target = document.getElementById("kettleTemp");
+        controlGet("/control_smart_kettle", { action: "target", target_temp: target ? target.value : 90 });
+    });
+
+    bind("adminCurtainsOpenBtn", () => {
+        const level = document.getElementById("curtainLevel");
+        controlGet("/control_smart_curtains", { action: "open", percent: level ? level.value : 100 });
+    });
+    bind("userCurtainsOpenBtn", () => controlGet("/control_smart_curtains", { action: "open", percent: 100 }));
+    bind("adminCurtainsCloseBtn", () => controlGet("/control_smart_curtains", { action: "close" }));
+    bind("userCurtainsCloseBtn", () => controlGet("/control_smart_curtains", { action: "close" }));
+    bind("adminCurtainsSaveBtn", () => {
+        const level = document.getElementById("curtainLevel");
+        controlGet("/control_smart_curtains", { action: "set", percent: level ? level.value : 0 });
+    });
+
+    bind("adminLightsOnBtn", () => controlGet("/control_smart_lighting", { action: "on" }));
+    bind("adminLightsOffBtn", () => controlGet("/control_smart_lighting", { action: "off" }));
+    bind("adminLightsApplyBtn", () => {
+        const brightness = document.getElementById("lightPower")?.value || 70;
+        const avg = Math.round(
+            (Number(document.getElementById("lampR")?.value || 255) +
+                Number(document.getElementById("lampG")?.value || 180) +
+                Number(document.getElementById("lampB")?.value || 90)) /
+                3
+        );
+        const colorTemp = 2000 + Math.round((avg / 255) * 4500);
+        controlGet("/control_smart_lighting", { action: "apply", brightness, color_temperature: colorTemp });
+    });
+    bind("userLightsApplyBtn", () => {
+        const brightness = document.getElementById("lightLevel")?.value || 70;
+        controlGet("/control_smart_lighting", { action: "apply", brightness, color_temperature: 3500 });
+    });
+
+    bind("adminVacuumStartBtn", () => controlGet("/control_robot_vacuum", { action: "start", mode: "auto" }));
+    bind("userVacuumStartBtn", () => controlGet("/control_robot_vacuum", { action: "start", mode: "eco" }));
+    bind("adminVacuumPauseBtn", () => controlGet("/control_robot_vacuum", { action: "pause" }));
+    bind("userVacuumPauseBtn", () => controlGet("/control_robot_vacuum", { action: "pause" }));
+    bind("adminVacuumDockBtn", () => controlGet("/control_robot_vacuum", { action: "dock" }));
+    bind("userVacuumDockBtn", () => controlGet("/control_robot_vacuum", { action: "dock" }));
+
+    bind("adminClimateApplyBtn", () => {
+        const t = document.getElementById("homeTemp")?.value || 24;
+        const h = document.getElementById("homeHumidity")?.value || 50;
+        controlGet("/control_temperature_control", { target_temperature: t });
+        controlGet("/control_humidity_control", { target_humidity: h });
+    });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    setupThemeToggle();
+    setupSummaryToggles();
+    setupRgbPreview("lampR", "lampG", "lampB", "lampColorPreview", "lampColorValue");
+    setupRgbPreview("userLampR", "userLampG", "userLampB", "userLampColorPreview", "userLampColorValue");
+    updateDateTimeLocal();
+    setInterval(updateDateTimeLocal, 1000);
+    setupControlActions();
+    connectAllThings();
+    setInterval(connectAllThings, 10000);
+});

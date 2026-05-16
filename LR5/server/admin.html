@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Smart Home - Администратор</title>
+</head>
+<body>
+    <main class="container">
+        <section class="card">
+            <header class="panel-header">
+                <h1>Панель администратора ⚙️</h1>
+                <div class="button-group">
+                    <button class="btn btn-secondary" type="button" data-style-toggle>Ночной стиль</button>
+                    <a class="btn btn-secondary" href="index.html">Выйти</a>
+                </div>
+            </header>
+
+            <div class="status-row">
+                <span class="status-badge online">Дом онлайн</span>
+                <span class="status-badge">Роль: администратор</span>
+                <span class="status-badge">Активных устройств: 6</span>
+                <span class="status-badge" id="adminDateTime">--.--.---- --:--:--</span>
+            </div>
+
+            <div class="button-group">
+                    <button class="btn btn-admin" type="button" data-toggle-target="adminSummary">Показать сводку</button>
+            </div>
+                <p id="adminActionMessage" class="device-meta"></p>
+
+            <div class="grid">
+                <article class="tile is-hidden" id="adminSummary">
+                    <h2 class="section-title">Сводка системы 📊</h2>
+                    <ul>
+                        <li id="adminSummaryVacuum">Пылесос: заряд 82 %</li>
+                        <li id="adminSummaryCurtains">Шторы: открыты на 60 %</li>
+                        <li id="adminSummaryKettle">Чайник: 50 C</li>
+                        <li id="adminSummaryClimate">Климат: 22 C / 45 % влажности</li>
+                        <li id="adminSummaryLights">Лампы: 70 % яркости, 3500 K</li>
+                    </ul>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Умный чайник ☕</h2>
+                    <form class="form-grid">
+                        <div class="power-row">
+                            <span>Состояние чайника:</span>
+                            <span id="adminKettleIndicator" class="power-indicator"></span>
+                            <strong id="adminKettleStateText">Выключен</strong>
+                        </div>
+
+                        <label for="adminKettleCurrentTemp">Текущая температура чайника (C):</label>
+                        <input id="adminKettleCurrentTemp" type="number" value="24" readonly>
+
+                        <label for="kettleTemp">Температура чайника (C):</label>
+                        <input id="kettleTemp" type="number" min="40" max="100" value="90">
+
+                        <div class="button-group">
+                            <button id="adminKettleOnBtn" class="btn btn-admin" type="button" data-kettle-action="on">Включить чайник</button>
+                            <button id="adminKettleOffBtn" class="btn btn-admin" type="button" data-kettle-action="off">Выключить чайник</button>
+                            <button id="adminKettleTargetSaveBtn" class="btn btn-admin" type="button">Сохранить температуру</button>
+                        </div>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Климат-контроль 🌡️</h2>
+                    <form class="form-grid">
+                        <label for="homeTemp">Температура в доме (C):</label>
+                        <input id="homeTemp" type="number" min="16" max="30" value="24">
+
+                        <label for="homeHumidity">Влажность в доме (%):</label>
+                        <input id="homeHumidity" type="number" min="0" max="100" value="50">
+
+                        <div class="button-group">
+                            <button id="adminClimateApplyBtn" class="btn" type="button">Сохранить температуру и влажность</button>
+                        </div>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Умные шторы 🪟</h2>
+                    <form class="form-grid">
+                        <label for="curtainLevel">Открытие штор (%):</label>
+                        <input id="curtainLevel" type="range" min="0" max="100" value="60">
+
+                        <div class="button-group">
+                            <button id="adminCurtainsOpenBtn" class="btn" type="button">Открыть</button>
+                            <button id="adminCurtainsCloseBtn" class="btn" type="button">Закрыть</button>
+                            <button id="adminCurtainsSaveBtn" class="btn" type="button">Сохранить положение</button>
+                        </div>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Умные лампы 💡</h2>
+                    <form class="form-grid">
+                        <label for="lightPower">Яркость ламп (%):</label>
+                        <input id="lightPower" type="range" min="0" max="100" value="70">
+
+                        <div class="color-menu">
+                            <h3>Цвет ламп (RGB)</h3>
+                            <div class="color-preview-wrap">
+                                <div id="lampColorPreview" class="color-preview"></div>
+                                <p id="lampColorValue" class="device-meta">RGB(255, 180, 90)</p>
+                            </div>
+                            <table class="rgb-table">
+                                <thead>
+                                    <tr>
+                                        <th>Канал</th>
+                                        <th>Значение</th>
+                                        <th>Диапазон</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>R</td>
+                                        <td><input id="lampR" type="number" min="0" max="255" value="255"></td>
+                                        <td>0-255</td>
+                                    </tr>
+                                    <tr>
+                                        <td>G</td>
+                                        <td><input id="lampG" type="number" min="0" max="255" value="180"></td>
+                                        <td>0-255</td>
+                                    </tr>
+                                    <tr>
+                                        <td>B</td>
+                                        <td><input id="lampB" type="number" min="0" max="255" value="90"></td>
+                                        <td>0-255</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="button-group">
+                            <button id="adminLightsOnBtn" class="btn" type="button">Включить лампы</button>
+                            <button id="adminLightsOffBtn" class="btn" type="button">Выключить лампы</button>
+                            <button id="adminLightsApplyBtn" class="btn" type="button">Применить RGB</button>
+                        </div>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Робот-пылесос 🤖</h2>
+                    <p class="device-meta">Состояние: <strong id="adminVacuumState">Ожидает запуска</strong></p>
+                    <p class="device-meta">Карта дома: <strong id="adminMapStatus">не загружена</strong></p>
+                    <div class="button-group">
+                        <button id="adminVacuumStartBtn" class="btn" type="button" data-vacuum-state-target="adminVacuumState" data-vacuum-state="Запущен">Запустить уборку</button>
+                        <button id="adminVacuumPauseBtn" class="btn" type="button" data-vacuum-state-target="adminVacuumState" data-vacuum-state="Ожидает запуска">Остановить уборку</button>
+                        <button id="adminVacuumDockBtn" class="btn" type="button" data-vacuum-state-target="adminVacuumState" data-vacuum-state="Ожидает запуска">Вернуть на базу</button>
+                    </div>
+                    <hr>
+                    <form class="form-grid">
+                        <label for="mapFileInput">Загрузить карту дома:</label>
+                        <input id="mapFileInput" type="file" accept=".png,.jpg,.jpeg,.json,.txt">
+                        <div class="button-group">
+                            <button class="btn" id="uploadMapBtn" type="button">Загрузить карту</button>
+                            <button class="btn" id="viewMapBtn" type="button">Просмотр карты дома</button>
+                        </div>
+                    </form>
+                </article>
+
+                <article class="tile tile-wide">
+                    <h2 class="section-title">Управление устройствами 🧩</h2>
+                    <div class="device-manager">
+                        <ul id="adminDeviceList"></ul>
+                    </div>
+                    <form class="form-grid">
+                        <label for="newDeviceName">Добавить устройство:</label>
+                        <input id="newDeviceName" type="text" placeholder="Например: Умная колонка">
+                        <button id="addDeviceBtn" class="btn btn-admin" type="button">Добавить устройство</button>
+
+                        <label for="removeDeviceSelect">Удалить устройство:</label>
+                        <select id="removeDeviceSelect"></select>
+                        <button id="removeDeviceBtn" class="btn" type="button">Удалить выбранное</button>
+                    </form>
+                </article>
+
+                <article class="tile">
+                    <h2 class="section-title">Сценарии ⏰</h2>
+                    <form class="form-grid">
+                        <label for="sceneName">Название сценария:</label>
+                        <input id="sceneName" type="text" placeholder="Например: Теплый вечер">
+
+                        <label for="sceneDate">Дата:</label>
+                        <input id="sceneDate" type="date">
+
+                        <label for="sceneTime">Время:</label>
+                        <input id="sceneTime" type="time">
+
+                        <h3>Что сохранить в сценарий</h3>
+                        <label><input type="checkbox" checked> Лампы: яркость</label>
+                        <label><input type="checkbox" checked> Лампы: цвет RGB</label>
+                        <label><input type="checkbox"> Шторы: положение</label>
+                        <label><input type="checkbox"> Чайник: температура</label>
+                        <label><input type="checkbox"> Климат: температура</label>
+                        <label><input type="checkbox"> Климат: влажность</label>
+                        <label><input type="checkbox"> Пылесос: запуск</label>
+
+                        <button id="adminSceneSaveBtn" class="btn btn-admin" type="button">Сохранить сценарий</button>
+                    </form>
+                </article>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        if (localStorage.getItem("smartHomeRole") !== "admin") {
+            alert("Доступ только для администратора.");
+            window.location.href = "index.html";
+        }
+    </script>
+    <script src="script.js?v=2"></script>
+</body>
+</html>
