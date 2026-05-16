@@ -1,8 +1,30 @@
 {
+  "Temperature": [
+    {
+      "timeStamp": "2026-05-16 13:38:45",
+      "temperature": 22.0
+    },
+    {
+      "timeStamp": "2026-05-16 13:38:45",
+      "temperature": 22.6
+    },
+    {
+      "timeStamp": "2026-05-16 13:38:45",
+      "temperature": 23.2
+    },
+    {
+      "timeStamp": "2026-05-16 13:38:45",
+      "temperature": 23.8
+    },
+    {
+      "timeStamp": "2026-05-16 13:38:45",
+      "temperature": 24.4
+    }
+  ],
   "Humidity": [
     {
-      "timeStamp": "2026-05-16 12:57:17",
-      "humidity": 40.0
+      "timeStamp": "2026-05-16 13:38:45",
+      "humidity": 45.0
     }
   ]
 }

@@ -20,8 +20,19 @@ logger = system["logger"]
 
 robot, curtains, kettle, temperature, humidity, lighting = devices
 
+logger.bootstrap_initial(temperature.temperature, humidity.humidity)
+
 def _run_automation() -> list[str]:
     return automation.run_after_sensor_update()
+
+
+def _analysis_payload() -> dict:
+    return {
+        "avg_temperature": logger.get_average_temperature(),
+        "max_temperature": logger.get_max_temperature(),
+        "avg_humidity": logger.get_average_humidity(),
+        "max_humidity": logger.get_max_humidity(),
+    }
 
 
 @app.route("/")
@@ -46,46 +57,49 @@ def user_html():
 
 @app.route("/connect_robot_vacuum")
 def connect_robot_vacuum():
-    return jsonify(robot.connect())
+    return jsonify(robot.connect(request))
 
 
 @app.route("/connect_smart_curtains")
 def connect_smart_curtains():
-    payload = curtains.connect()
+    payload = curtains.connect(request)
     auto = _run_automation()
     if auto:
         payload["automation"] = auto
+    payload["analysis"] = _analysis_payload()
     return jsonify(payload)
 
 
 @app.route("/connect_smart_kettle")
 def connect_smart_kettle():
-    return jsonify(kettle.connect())
+    return jsonify(kettle.connect(request))
 
 
 @app.route("/connect_temperature_control")
 def connect_temperature_control():
-    payload = temperature.connect()
+    payload = temperature.connect(request)
     logger.insert_temperature(temperature.temperature)
     auto = _run_automation()
     if auto:
         payload["automation"] = auto
+    payload["analysis"] = _analysis_payload()
     return jsonify(payload)
 
 
 @app.route("/connect_humidity_control")
 def connect_humidity_control():
-    payload = humidity.connect()
+    payload = humidity.connect(request)
     logger.insert_humidity(humidity.humidity)
     auto = _run_automation()
     if auto:
         payload["automation"] = auto
+    payload["analysis"] = _analysis_payload()
     return jsonify(payload)
 
 
 @app.route("/connect_smart_lighting")
 def connect_smart_lighting():
-    return jsonify(lighting.connect())
+    return jsonify(lighting.connect(request))
 
 
 @app.route("/control_robot_vacuum")
@@ -116,6 +130,12 @@ def control_humidity_control():
 @app.route("/control_smart_lighting")
 def control_smart_lighting():
     return jsonify(lighting.control(request))
+
+
+
+@app.route("/api/analysis")
+def api_analysis():
+    return jsonify({"ok": True, "analysis": _analysis_payload()})
 
 
 @app.route("/api/scenes", methods=["GET"])

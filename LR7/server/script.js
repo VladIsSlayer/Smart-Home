@@ -68,6 +68,12 @@ function updateDateTimeLocal() {
     });
 }
 
+function handleConnectResponse(data) {
+    if (data && data.ok === false && data.message) {
+        showMessage(data.message, true);
+    }
+}
+
 function ajaxGet(url, onSuccess, onError) {
     fetch(url)
         .then(async (response) => {
@@ -147,6 +153,7 @@ function applyLightingRgb(r, g, b, prefix = "") {
 
 function connectRobotVacuum() {
     ajaxGet("/connect_robot_vacuum", (data) => {
+        handleConnectResponse(data);
         const stateText =
             data.cleaningState === "running" ? "Уборка" : data.cleaningState === "docked" ? "На базе" : "На связи";
         const adminState = document.getElementById("adminVacuumState");
@@ -188,47 +195,9 @@ function refreshAnalysisPanel() {
     });
 }
 
-let temperatureChartInstance = null;
-
-function loadTemperatureChart() {
-    const canvas = document.getElementById("temperatureChart");
-    if (!canvas || typeof Chart === "undefined") return;
-    ajaxGet("/api/chart/temperature", (payload) => {
-        const chart = payload.chart || { labels: [], values: [] };
-        if (temperatureChartInstance) {
-            temperatureChartInstance.data.labels = chart.labels;
-            temperatureChartInstance.data.datasets[0].data = chart.values;
-            temperatureChartInstance.update();
-            return;
-        }
-        temperatureChartInstance = new Chart(canvas, {
-            type: "line",
-            data: {
-                labels: chart.labels,
-                datasets: [{
-                    label: "Температура, C",
-                    data: chart.values,
-                    borderColor: "#2f6fed",
-                    backgroundColor: "rgba(47, 111, 237, 0.15)",
-                    fill: true,
-                    tension: 0.35,
-                    pointRadius: 3,
-                }],
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { display: true } },
-                scales: {
-                    y: { beginAtZero: false, title: { display: true, text: "C" } },
-                    x: { ticks: { maxRotation: 45, minRotation: 0 } },
-                },
-            },
-        });
-    });
-}
-
 function connectSmartCurtains() {
     ajaxGet("/connect_smart_curtains", (data) => {
+        handleConnectResponse(data);
         if (data.automation) showAutomation(data.automation);
         if (data.analysis) renderAnalysis(data.analysis);
         const pos = data.positionPercent ?? 0;
@@ -255,6 +224,7 @@ function connectSmartCurtains() {
 
 function connectSmartKettle() {
     ajaxGet("/connect_smart_kettle", (data) => {
+        handleConnectResponse(data);
         const adminTemp = document.getElementById("adminKettleCurrentTemp");
         const userTemp = document.getElementById("userKettleCurrentTemp");
         const adminState = document.getElementById("adminKettleStateText");
@@ -276,6 +246,7 @@ function connectSmartKettle() {
 
 function connectTemperatureControl() {
     ajaxGet("/connect_temperature_control", (data) => {
+        handleConnectResponse(data);
         if (data.automation) showAutomation(data.automation);
         if (data.analysis) renderAnalysis(data.analysis);
         const currentEl = document.getElementById("adminClimateCurrentTemp");
@@ -295,6 +266,7 @@ function connectTemperatureControl() {
 
 function connectHumidityControl() {
     ajaxGet("/connect_humidity_control", (data) => {
+        handleConnectResponse(data);
         if (data.automation) showAutomation(data.automation);
         if (data.analysis) renderAnalysis(data.analysis);
         const currentEl = document.getElementById("adminClimateCurrentHumidity");
@@ -342,7 +314,10 @@ function updateLightingFromData(data) {
 }
 
 function connectSmartLighting() {
-    ajaxGet("/connect_smart_lighting", (data) => updateLightingFromData(data));
+    ajaxGet("/connect_smart_lighting", (data) => {
+        handleConnectResponse(data);
+        updateLightingFromData(data);
+    });
 }
 
 function applyLightingBrightness(sliderId) {
@@ -643,10 +618,6 @@ function initDevicePage() {
     if (document.getElementById("analysisStats")) {
         refreshAnalysisPanel();
         setInterval(refreshAnalysisPanel, 5000);
-    }
-    if (document.getElementById("temperatureChart")) {
-        loadTemperatureChart();
-        setInterval(loadTemperatureChart, 5000);
     }
     document
         .querySelectorAll(

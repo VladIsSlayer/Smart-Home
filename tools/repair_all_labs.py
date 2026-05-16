@@ -81,10 +81,62 @@ def patch_things(lab: int) -> None:
     (ROOT / f"LR{lab}" / "things.py").write_text(text, encoding="utf-8")
 
 
+ANALYSIS_TILE_RE = re.compile(
+    r'\s*<article class="tile tile-wide">.*?id="temperatureChart".*?</article>',
+    re.DOTALL,
+)
+CHART_BLOCK_RE = re.compile(
+    r"\s*<h3>График температуры</h3>\s*<canvas id=\"temperatureChart\"[^>]*></canvas>",
+    re.DOTALL,
+)
+CHART_JS_SCRIPT_RE = re.compile(
+    r'\s*<script src="https://cdn\.jsdelivr\.net/npm/chart\.js[^"]*"></script>\s*',
+    re.DOTALL,
+)
+
+
+def patch_admin_html(lab: int) -> None:
+    text = (ROOT / "LR9" / "server" / "admin.html").read_text(encoding="utf-8")
+    if lab < 7:
+        text = ANALYSIS_TILE_RE.sub("", text)
+    elif lab < 9:
+        text = CHART_BLOCK_RE.sub("", text)
+        text = CHART_JS_SCRIPT_RE.sub("\n", text)
+        text = text.replace(
+            "<h2 class=\"section-title\">Анализ и визуализация 📈</h2>",
+            "<h2 class=\"section-title\">Анализ данных 📊</h2>",
+        )
+    for other in ("index.html", "user.html"):
+        src = ROOT / "LR9" / "server" / other
+        dst = ROOT / f"LR{lab}" / "server" / other
+        body = src.read_text(encoding="utf-8").replace("?v=11", f"?v={lab}")
+        dst.write_text(body, encoding="utf-8")
+    text = text.replace("?v=11", f"?v={lab}")
+    (ROOT / f"LR{lab}" / "server" / "admin.html").write_text(text, encoding="utf-8")
+
+
+INIT_ANALYSIS_BLOCK = """    if (document.getElementById("analysisStats")) {
+        refreshAnalysisPanel();
+        setInterval(refreshAnalysisPanel, 5000);
+    }
+"""
+INIT_CHART_BLOCK = """    if (document.getElementById("temperatureChart")) {
+        loadTemperatureChart();
+        setInterval(loadTemperatureChart, 5000);
+    }
+"""
+
+
 def patch_script(lab: int) -> None:
-    text = LR9_SCRIPT.replace("?v=9", f"?v={lab}")
-    # Убрать анализ/график для лаб без API и блоков в HTML
-    if lab < 8:
+    text = LR9_SCRIPT.replace("?v=11", f"?v={lab}")
+    if lab < 7:
+        text = re.sub(
+            r"\nfunction renderAnalysis\(analysis\) \{.*?\n\}\n",
+            "\n",
+            text,
+            count=1,
+            flags=re.DOTALL,
+        )
         text = re.sub(
             r"\nfunction refreshAnalysisPanel\(\) \{.*?\n\}\n",
             "\n",
@@ -93,8 +145,8 @@ def patch_script(lab: int) -> None:
             flags=re.DOTALL,
         )
         text = text.replace("        if (data.analysis) renderAnalysis(data.analysis);\n", "")
-        text = text.replace("    refreshAnalysisPanel();\n", "")
-        text = text.replace("    setInterval(refreshAnalysisPanel, 5000);\n", "")
+        text = text.replace(INIT_ANALYSIS_BLOCK, "")
+        text = text.replace(INIT_CHART_BLOCK, "")
     if lab < 9:
         text = re.sub(
             r"\nlet temperatureChartInstance = null;.*?^function connectSmartCurtains",
@@ -103,13 +155,7 @@ def patch_script(lab: int) -> None:
             count=1,
             flags=re.MULTILINE | re.DOTALL,
         )
-        text = text.replace("    loadTemperatureChart();\n", "")
-        text = text.replace(
-            "    if (document.getElementById(\"temperatureChart\")) {\n"
-            "        setInterval(loadTemperatureChart, 10000);\n"
-            "    }\n",
-            "",
-        )
+        text = text.replace(INIT_CHART_BLOCK, "")
     (ROOT / f"LR{lab}" / "server" / "script.js").write_text(text, encoding="utf-8")
 
 
@@ -139,13 +185,15 @@ scene_manager = system["scene_manager"]
     common_head += """
 robot, curtains, kettle, temperature, humidity, lighting = devices
 """
+    if lab >= 7:
+        common_head += "\nlogger.bootstrap_initial(temperature.temperature, humidity.humidity)\n"
     if lab >= 6:
         common_head += """
 def _run_automation() -> list[str]:
     return automation.run_after_sensor_update()
 
 """
-    if lab >= 8:
+    if lab >= 7:
         common_head += """
 def _analysis_payload() -> dict:
     return {
@@ -180,31 +228,31 @@ def user_html():
 
 @app.route("/connect_robot_vacuum")
 def connect_robot_vacuum():
-    return jsonify(robot.connect())
+    return jsonify(robot.connect(request))
 
 
 @app.route("/connect_smart_curtains")
 def connect_smart_curtains():
-    payload = curtains.connect()
+    payload = curtains.connect(request)
 '''
     if lab >= 6:
         routes += """    auto = _run_automation()
     if auto:
         payload["automation"] = auto
 """
-    if lab >= 8:
+    if lab >= 7:
         routes += '    payload["analysis"] = _analysis_payload()\n'
     routes += """    return jsonify(payload)
 
 
 @app.route("/connect_smart_kettle")
 def connect_smart_kettle():
-    return jsonify(kettle.connect())
+    return jsonify(kettle.connect(request))
 
 
 @app.route("/connect_temperature_control")
 def connect_temperature_control():
-    payload = temperature.connect()
+    payload = temperature.connect(request)
 """
     if lab >= 7:
         routes += "    logger.insert_temperature(temperature.temperature)\n"
@@ -213,14 +261,14 @@ def connect_temperature_control():
     if auto:
         payload["automation"] = auto
 """
-    if lab >= 8:
+    if lab >= 7:
         routes += '    payload["analysis"] = _analysis_payload()\n'
     routes += """    return jsonify(payload)
 
 
 @app.route("/connect_humidity_control")
 def connect_humidity_control():
-    payload = humidity.connect()
+    payload = humidity.connect(request)
 """
     if lab >= 7:
         routes += "    logger.insert_humidity(humidity.humidity)\n"
@@ -229,14 +277,14 @@ def connect_humidity_control():
     if auto:
         payload["automation"] = auto
 """
-    if lab >= 8:
+    if lab >= 7:
         routes += '    payload["analysis"] = _analysis_payload()\n'
     routes += """    return jsonify(payload)
 
 
 @app.route("/connect_smart_lighting")
 def connect_smart_lighting():
-    return jsonify(lighting.connect())
+    return jsonify(lighting.connect(request))
 
 
 @app.route("/control_robot_vacuum")
@@ -271,7 +319,7 @@ def control_smart_lighting():
 """
 
     extra = ""
-    if lab >= 8:
+    if lab >= 7:
         extra += '''
 
 @app.route("/api/analysis")
@@ -332,6 +380,11 @@ def api_scenes_delete():
 if __name__ == "__main__":
     app.run(debug=True)
 '''
+    if lab == 9:
+        footer = '''
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False, threaded=True)
+'''
     (ROOT / f"LR{lab}" / "app.py").write_text(
         common_head + routes + extra + scenes + footer, encoding="utf-8"
     )
@@ -342,6 +395,7 @@ def main() -> None:
         print(f"Repair LR{lab}...")
         patch_things(lab)
         patch_script(lab)
+        patch_admin_html(lab)
         write_app(lab)
     print("Done.")
 

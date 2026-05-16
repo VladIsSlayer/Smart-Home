@@ -45,12 +45,12 @@ def user_html():
 
 @app.route("/connect_robot_vacuum")
 def connect_robot_vacuum():
-    return jsonify(robot.connect())
+    return jsonify(robot.connect(request))
 
 
 @app.route("/connect_smart_curtains")
 def connect_smart_curtains():
-    payload = curtains.connect()
+    payload = curtains.connect(request)
     auto = _run_automation()
     if auto:
         payload["automation"] = auto
@@ -59,12 +59,12 @@ def connect_smart_curtains():
 
 @app.route("/connect_smart_kettle")
 def connect_smart_kettle():
-    return jsonify(kettle.connect())
+    return jsonify(kettle.connect(request))
 
 
 @app.route("/connect_temperature_control")
 def connect_temperature_control():
-    payload = temperature.connect()
+    payload = temperature.connect(request)
     auto = _run_automation()
     if auto:
         payload["automation"] = auto
@@ -73,7 +73,7 @@ def connect_temperature_control():
 
 @app.route("/connect_humidity_control")
 def connect_humidity_control():
-    payload = humidity.connect()
+    payload = humidity.connect(request)
     auto = _run_automation()
     if auto:
         payload["automation"] = auto
@@ -82,7 +82,7 @@ def connect_humidity_control():
 
 @app.route("/connect_smart_lighting")
 def connect_smart_lighting():
-    return jsonify(lighting.connect())
+    return jsonify(lighting.connect(request))
 
 
 @app.route("/control_robot_vacuum")

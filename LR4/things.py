@@ -1,8 +1,9 @@
-﻿import abc
+import abc
 import json
 import random
 import re
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime
@@ -34,6 +35,47 @@ except ImportError:
 
 VACUUM_MODE_PATTERN = re.compile(r"^(eco|auto|turbo)$", re.IGNORECASE)
 CURTAIN_ACTION_PATTERN = re.compile(r"^(open|close|set|save)$", re.IGNORECASE)
+CONNECT_FORMAT_PATTERN = re.compile(r"^(json|full|short)$", re.IGNORECASE)
+CLIENT_ID_PATTERN = re.compile(r"^[a-zA-Z0-9\-_]{1,32}$")
+DEVICE_ROLE_PATTERN = re.compile(r"^(admin|user|system)$", re.IGNORECASE)
+CURTAIN_MODE_PATTERN = re.compile(r"^(manual|auto)$", re.IGNORECASE)
+LIGHT_PRESET_PATTERN = re.compile(r"^(warm|cool|day|night)$", re.IGNORECASE)
+VACUUM_STATE_PATTERN = re.compile(r"^(idle|running|paused|docked)$", re.IGNORECASE)
+
+
+def _connect_payload_error(device_id: str, message: str, **extra: Any) -> dict:
+    payload = {"ok": False, "id": device_id, "message": message}
+    payload.update(extra)
+    return payload
+
+
+def _validate_connect_args(request: Request | None, device_id: str) -> tuple[bool, str | None, dict]:
+    """Проверка входящих query-параметров connect: строки (regex) и целое число."""
+    validated: dict = {}
+    if request is None:
+        return True, None, validated
+
+    fmt = request.args.get("format", "json").strip()
+    if not CONNECT_FORMAT_PATTERN.match(fmt):
+        return False, f"Поле 'format' должно быть json|full|short, получено: {fmt!r}", validated
+    validated["format"] = fmt.lower()
+
+    role = request.args.get("role", "system").strip()
+    if not DEVICE_ROLE_PATTERN.match(role):
+        return False, f"Поле 'role' должно быть admin|user|system, получено: {role!r}", validated
+    validated["role"] = role.lower()
+
+    client = request.args.get("client", "").strip()
+    if client:
+        if not CLIENT_ID_PATTERN.match(client):
+            return False, f"Поле 'client' недопустимо: {client!r}", validated
+        validated["client"] = client
+
+    poll, err = _parse_int(request.args.get("poll", "1"), "poll", 0, 1)
+    if err:
+        return False, err, validated
+    validated["poll"] = poll
+    return True, None, validated
 
 
 def _parse_float(raw: str, field: str) -> tuple[float | None, str | None]:
@@ -62,8 +104,21 @@ class SmartDevice(abc.ABC):
         _safe_print(f"[SmartDevice.__init__] created {self.name} ({self.id})")
 
     @abc.abstractmethod
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
         pass
+
+    def _begin_connect(self, request: Request | None = None) -> tuple[dict | None, dict]:
+        ok, err, meta = _validate_connect_args(request, self.id)
+        if not ok:
+            return _connect_payload_error(self.id, err or "Некорректные параметры connect"), {}
+        return None, meta
+
+    @staticmethod
+    def _finish_connect(payload: dict, meta: dict) -> dict:
+        payload["ok"] = True
+        if meta:
+            payload["connectMeta"] = meta
+        return payload
 
     def control(self, request: Request) -> dict:
         msg = f"{self.name}: control not implemented"
@@ -86,7 +141,17 @@ class RobotVacuum(SmartDevice):
         self.roomMap: list = ["hall", "kitchen", "bedroom"]
         self.cleaningState: str = "idle"
 
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
+        err_payload, meta = self._begin_connect(request)
+        if err_payload:
+            return err_payload
+        if request is not None:
+            state = request.args.get("state", "").strip()
+            if state and not VACUUM_STATE_PATTERN.match(state):
+                return _connect_payload_error(
+                    self.id,
+                    f"Поле 'state' недопустимо: {state!r}. Допустимо: idle, running, paused, docked",
+                )
         self.emulate()
         self.status = "online"
         payload = {
@@ -97,7 +162,7 @@ class RobotVacuum(SmartDevice):
             "dustContainerLevel": self.dustContainerLevel,
         }
         _safe_print(f"[RobotVacuum.connect] {payload}")
-        return payload
+        return self._finish_connect(payload, meta)
 
     def emulate(self) -> None:
         if self.cleaningState == "running":
@@ -163,7 +228,19 @@ class SmartCurtains(SmartDevice):
         self._last_drift_at: float = time.monotonic()
         self._last_move_at: float = time.monotonic()
 
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
+        err_payload, meta = self._begin_connect(request)
+        if err_payload:
+            return err_payload
+        if request is not None:
+            mode = request.args.get("mode", "").strip()
+            if mode:
+                if not CURTAIN_MODE_PATTERN.match(mode):
+                    return _connect_payload_error(
+                        self.id,
+                        f"Поле 'mode' должно быть manual|auto, получено: {mode!r}",
+                    )
+                self.mode = mode.lower()
         self._advance_position()
         if self.positionPercent == self._target_position:
             self._maybe_drift()
@@ -176,7 +253,7 @@ class SmartCurtains(SmartDevice):
             "mode": self.mode,
         }
         _safe_print(f"[SmartCurtains.connect] {payload}")
-        return payload
+        return self._finish_connect(payload, meta)
 
     def _advance_position(self) -> None:
         now = time.monotonic()
@@ -289,7 +366,17 @@ class SmartKettle(SmartDevice):
         self.isBoiling: bool = False
         self._last_thermal_at: float = time.monotonic()
 
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
+        err_payload, meta = self._begin_connect(request)
+        if err_payload:
+            return err_payload
+        if request is not None:
+            raw_level = request.args.get("water_level", "").strip()
+            if raw_level:
+                level, err = _parse_int(raw_level, "water_level", 0, 1700)
+                if err:
+                    return _connect_payload_error(self.id, err)
+                self.waterLevelMl = level
         self.emulate()
         self.status = "online"
         payload = {
@@ -300,7 +387,7 @@ class SmartKettle(SmartDevice):
             "isBoiling": self.isBoiling,
         }
         _safe_print(f"[SmartKettle.connect] {payload}")
-        return payload
+        return self._finish_connect(payload, meta)
 
     def emulate(self) -> None:
         self.waterLevelMl = max(0, min(1700, self.waterLevelMl + random.randint(-30, 10)))
@@ -367,12 +454,22 @@ class TemperatureControl(SmartDevice):
         self.targetTemperature: float = 24.0
         self._last_emulate_at: float = time.monotonic()
 
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
+        err_payload, meta = self._begin_connect(request)
+        if err_payload:
+            return err_payload
+        if request is not None:
+            raw_value = request.args.get("value", "").strip()
+            if raw_value:
+                val, parse_err = _parse_float(raw_value, "value")
+                if parse_err:
+                    return _connect_payload_error(self.id, parse_err)
+                self.temperature = round(max(16.0, min(30.0, val)), 1)
         self.emulate()
         self.status = "online"
         payload = {"id": self.id, "temperature": self.temperature, "targetTemperature": self.targetTemperature}
         _safe_print(f"[TemperatureControl.connect] {payload}")
-        return payload
+        return self._finish_connect(payload, meta)
 
     def emulate(self) -> None:
         now = time.monotonic()
@@ -416,12 +513,22 @@ class HumidityControl(SmartDevice):
         self.targetHumidity: float = 50.0
         self._last_emulate_at: float = time.monotonic()
 
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
+        err_payload, meta = self._begin_connect(request)
+        if err_payload:
+            return err_payload
+        if request is not None:
+            raw_value = request.args.get("value", "").strip()
+            if raw_value:
+                val, parse_err = _parse_float(raw_value, "value")
+                if parse_err:
+                    return _connect_payload_error(self.id, parse_err)
+                self.humidity = round(max(25.0, min(70.0, val)), 1)
         self.emulate()
         self.status = "online"
         payload = {"id": self.id, "humidity": self.humidity, "targetHumidity": self.targetHumidity}
         _safe_print(f"[HumidityControl.connect] {payload}")
-        return payload
+        return self._finish_connect(payload, meta)
 
     def emulate(self) -> None:
         now = time.monotonic()
@@ -469,7 +576,28 @@ class SmartLighting(SmartDevice):
         self.rgb_b: int = 90
         self.isOn: bool = True
 
-    def connect(self) -> dict:
+    def connect(self, request: Request | None = None) -> dict:
+        err_payload, meta = self._begin_connect(request)
+        if err_payload:
+            return err_payload
+        if request is not None:
+            preset = request.args.get("preset", "").strip()
+            if preset:
+                if not LIGHT_PRESET_PATTERN.match(preset):
+                    return _connect_payload_error(
+                        self.id,
+                        f"Поле 'preset' должно быть warm|cool|day|night, получено: {preset!r}",
+                    )
+                presets = {
+                    "warm": (255, 180, 90, 2700),
+                    "cool": (200, 220, 255, 5500),
+                    "day": (255, 255, 240, 4500),
+                    "night": (80, 60, 120, 2200),
+                }
+                r, g, b, k = presets[preset.lower()]
+                self.rgb_r, self.rgb_g, self.rgb_b = r, g, b
+                self.colorTemperature = k
+                self.isOn = True
         self.status = "online"
         payload = {
             "id": self.id,
@@ -481,7 +609,7 @@ class SmartLighting(SmartDevice):
             "isOn": self.isOn,
         }
         _safe_print(f"[SmartLighting.connect] {payload}")
-        return payload
+        return self._finish_connect(payload, meta)
 
     def control(self, request: Request) -> dict:
         action = request.args.get("action", "apply")
@@ -571,6 +699,7 @@ class HomeAutomation:
                 new_pos = max(0, self._curtains._target_position - 25)
                 self._curtains.open(new_pos)
                 actions.append(f"Авто: шторы движутся к {new_pos}% (сохранение тепла)")
+
         self.last_actions = actions
         for action in actions:
             _safe_print(f"[HomeAutomation.run_after_sensor_update] {action}")
@@ -578,7 +707,7 @@ class HomeAutomation:
 
 
 class Logger:
-    """Долгосрочное хранение данных (MongoDB или JSON-файл при недоступности сервера)."""
+    """Долгосрочное хранение данных (JSON-файл + опционально MongoDB)."""
 
     LOG_INTERVAL_SEC = 5.0
 
@@ -588,6 +717,7 @@ class Logger:
         self._last_humidity: float | None = None
         self._last_temp_log_at: float = 0.0
         self._last_hum_log_at: float = 0.0
+        self._fallback_lock = threading.Lock()
         self._mongo_ok = False
         self._client = None
         self._db = None
@@ -595,11 +725,15 @@ class Logger:
         self._fallback_path = base / fallback_dir / f"{db_name}.json"
         self._fallback_path.parent.mkdir(parents=True, exist_ok=True)
         if not self._fallback_path.exists():
-            self._fallback_path.write_text("{}", encoding="utf-8")
+            self._save_fallback_unlocked({"Temperature": [], "Humidity": []})
 
         if PYMONGO_AVAILABLE:
             try:
-                self._client = pymongo.MongoClient("mongodb://localhost:27017/", serverSelectionTimeoutMS=800)
+                self._client = pymongo.MongoClient(
+                    "mongodb://localhost:27017/",
+                    serverSelectionTimeoutMS=800,
+                    connect=False,
+                )
                 self._client.admin.command("ping")
                 self._db = self._client[db_name]
                 self._mongo_ok = True
@@ -607,22 +741,95 @@ class Logger:
             except Exception as exc:
                 _safe_print(f"[Logger] MongoDB unavailable ({exc}), using JSON fallback")
 
-    def _load_fallback(self) -> dict:
+        self._hydrate_from_storage()
+
+    def _load_fallback_unlocked(self) -> dict:
+        raw = self._fallback_path.read_text(encoding="utf-8").strip()
+        if not raw:
+            return {"Temperature": [], "Humidity": []}
         try:
-            return json.loads(self._fallback_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return {}
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            _safe_print(f"[Logger] Corrupt JSON ({exc}), resetting storage file")
+            backup = self._fallback_path.with_suffix(".json.bak")
+            try:
+                backup.write_text(raw, encoding="utf-8")
+            except OSError:
+                pass
+            data = {"Temperature": [], "Humidity": []}
+            self._save_fallback_unlocked(data)
+        if not isinstance(data, dict):
+            data = {"Temperature": [], "Humidity": []}
+        data.setdefault("Temperature", [])
+        data.setdefault("Humidity", [])
+        return data
+
+    def _load_fallback(self) -> dict:
+        with self._fallback_lock:
+            return self._load_fallback_unlocked()
+
+    def _save_fallback_unlocked(self, data: dict) -> None:
+        tmp_path = self._fallback_path.with_suffix(".json.tmp")
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
+        tmp_path.write_text(payload, encoding="utf-8")
+        tmp_path.replace(self._fallback_path)
 
     def _save_fallback(self, data: dict) -> None:
-        self._fallback_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        with self._fallback_lock:
+            self._save_fallback_unlocked(data)
+
+    def _append_to_fallback(self, collection: str, document: dict) -> None:
+        with self._fallback_lock:
+            store = self._load_fallback_unlocked()
+            store.setdefault(collection, []).append(document)
+            self._save_fallback_unlocked(store)
 
     def _insert(self, collection: str, document: dict) -> None:
+        self._append_to_fallback(collection, document)
         if self._mongo_ok and self._db is not None:
-            self._db[collection].insert_one(document)
-            return
+            try:
+                self._db[collection].insert_one(document)
+            except Exception as exc:
+                _safe_print(f"[Logger] MongoDB insert failed: {exc}")
+
+    def _rows_from_fallback(self, collection: str) -> list[dict]:
         store = self._load_fallback()
-        store.setdefault(collection, []).append(document)
-        self._save_fallback(store)
+        rows = store.get(collection, [])
+        return rows if isinstance(rows, list) else []
+
+    def _rows_from_mongo(self, collection: str) -> list[dict]:
+        if not self._mongo_ok or self._db is None:
+            return []
+        try:
+            return list(self._db[collection].find({}, {"_id": 0}))
+        except Exception as exc:
+            _safe_print(f"[Logger] MongoDB read failed: {exc}")
+            return []
+
+    def _merged_rows(self, collection: str) -> list[dict]:
+        """Единый источник для анализа и графика: JSON + Mongo, без потери данных."""
+        file_rows = self._rows_from_fallback(collection)
+        mongo_rows = self._rows_from_mongo(collection)
+        if len(mongo_rows) > len(file_rows):
+            return mongo_rows
+        return file_rows
+
+    def _hydrate_from_storage(self) -> None:
+        temp_values = self._field_values("Temperature", "temperature")
+        hum_values = self._field_values("Humidity", "humidity")
+        if temp_values:
+            self._last_temperature = temp_values[-1]
+        if hum_values:
+            self._last_humidity = hum_values[-1]
+        self._last_temp_log_at = 0.0
+        self._last_hum_log_at = 0.0
+
+    def bootstrap_initial(self, temperature: float, humidity: float) -> None:
+        """Записать стартовые показания при запуске сервера, если журнал пуст."""
+        if not self._field_values("Temperature", "temperature"):
+            self.insert_temperature(temperature, force=True)
+        if not self._field_values("Humidity", "humidity"):
+            self.insert_humidity(humidity, force=True)
 
     def _should_log(self, value: float, last_value: float | None, last_log_at: float) -> bool:
         now = time.monotonic()
@@ -630,11 +837,13 @@ class Logger:
             return True
         if abs(value - last_value) >= 0.05:
             return True
+        if last_log_at <= 0:
+            return True
         return (now - last_log_at) >= self.LOG_INTERVAL_SEC
 
-    def insert_temperature(self, value: float) -> str:
+    def insert_temperature(self, value: float, *, force: bool = False) -> str:
         value = round(float(value), 1)
-        if not self._should_log(value, self._last_temperature, self._last_temp_log_at):
+        if not force and not self._should_log(value, self._last_temperature, self._last_temp_log_at):
             return "temperature unchanged"
         self._last_temperature = value
         self._last_temp_log_at = time.monotonic()
@@ -643,9 +852,9 @@ class Logger:
         _safe_print(f"[Logger.insert_temperature] {doc}")
         return "temperature saved"
 
-    def insert_humidity(self, value: float) -> str:
+    def insert_humidity(self, value: float, *, force: bool = False) -> str:
         value = round(float(value), 1)
-        if not self._should_log(value, self._last_humidity, self._last_hum_log_at):
+        if not force and not self._should_log(value, self._last_humidity, self._last_hum_log_at):
             return "humidity unchanged"
         self._last_humidity = value
         self._last_hum_log_at = time.monotonic()
@@ -654,52 +863,51 @@ class Logger:
         _safe_print(f"[Logger.insert_humidity] {doc}")
         return "humidity saved"
 
-    def _read_collection(self, collection: str, field: str) -> list[float]:
+    def _field_values(self, collection: str, field: str) -> list[float]:
         values: list[float] = []
-        if self._mongo_ok and self._db is not None:
-            for row in self._db[collection].find({}, {field: 1, "_id": 0}):
-                if field in row:
-                    values.append(float(row[field]))
-            return values
-        store = self._load_fallback()
-        for row in store.get(collection, []):
+        for row in self._merged_rows(collection):
             if field in row:
-                values.append(float(row[field]))
+                try:
+                    values.append(float(row[field]))
+                except (TypeError, ValueError):
+                    continue
         return values
+
+    def _read_collection(self, collection: str, field: str) -> list[float]:
+        return self._field_values(collection, field)
 
     def get_average_temperature(self) -> float | None:
         values = self._read_collection("Temperature", "temperature")
         if not values:
             return None
-        return round(sum(values) / len(values), 2)
+        return round(sum(values) / len(values), 1)
 
     def get_max_temperature(self) -> float | None:
         values = self._read_collection("Temperature", "temperature")
-        return round(max(values), 2) if values else None
+        return round(max(values), 1) if values else None
 
     def get_average_humidity(self) -> float | None:
         values = self._read_collection("Humidity", "humidity")
         if not values:
             return None
-        return round(sum(values) / len(values), 2)
+        return round(sum(values) / len(values), 1)
 
     def get_max_humidity(self) -> float | None:
         values = self._read_collection("Humidity", "humidity")
-        return round(max(values), 2) if values else None
+        return round(max(values), 1) if values else None
 
     def get_temperature_chart_data(self, limit: int = 30) -> dict:
         labels: list[str] = []
         data: list[float] = []
-        rows: list[dict] = []
-        if self._mongo_ok and self._db is not None:
-            rows = list(self._db["Temperature"].find({}, {"timeStamp": 1, "temperature": 1, "_id": 0}).sort("_id", -1).limit(limit))
-            rows.reverse()
-        else:
-            store = self._load_fallback()
-            rows = store.get("Temperature", [])[-limit:]
+        rows = self._merged_rows("Temperature")[-limit:]
         for row in rows:
+            if "temperature" not in row:
+                continue
             labels.append(str(row.get("timeStamp", "")))
-            data.append(float(row.get("temperature", 0)))
+            try:
+                data.append(round(float(row["temperature"]), 1))
+            except (TypeError, ValueError):
+                continue
         return {"labels": labels, "values": data}
 
 
