@@ -1,18 +1,34 @@
 function clamp(value, min, max) {
     const number = Number(value);
-    if (Number.isNaN(number)) {
-        return min;
-    }
+    if (Number.isNaN(number)) return min;
     return Math.max(min, Math.min(max, number));
 }
 
-function showError(text) {
+let localEditLockUntil = 0;
+const dirtyInputs = new Set();
+
+function markLocalEditing() {
+    localEditLockUntil = Date.now() + 8000;
+}
+
+function shouldUpdateInput(input) {
+    return Boolean(input) && document.activeElement !== input && Date.now() > localEditLockUntil && !dirtyInputs.has(input.id);
+}
+
+function markInputDirty(event) {
+    const input = event.target;
+    if (!(input instanceof HTMLElement) || !input.id) return;
+    dirtyInputs.add(input.id);
+    markLocalEditing();
+}
+
+function showMessage(text, isError = false) {
     const adminMsg = document.getElementById("adminActionMessage");
     const userMsg = document.getElementById("userActionMessage");
     const target = adminMsg || userMsg;
     if (!target) return;
     target.textContent = text;
-    target.style.color = "#b92020";
+    target.style.color = isError ? "#b92020" : "";
 }
 
 function setupSummaryToggles() {
@@ -52,16 +68,54 @@ function updateDateTimeLocal() {
     });
 }
 
-function ajaxGet(url, onSuccess) {
+function ajaxGet(url, onSuccess, onError) {
     fetch(url)
         .then((response) => response.json())
         .then(onSuccess)
-        .catch((error) => showError(`Ошибка запроса ${url}: ${error.message}`));
+        .catch((error) => {
+            const msg = `Ошибка запроса ${url}: ${error.message}`;
+            if (onError) onError(msg);
+            else showMessage(msg, true);
+        });
 }
+
+function buildQuery(params) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
+    });
+    const text = query.toString();
+    return text ? `?${text}` : "";
+}
+
+function controlGet(path, params, onSuccess) {
+    ajaxGet(`${path}${buildQuery(params)}`, (data) => {
+        if (data.message) showMessage(data.message, !data.ok);
+        if (onSuccess) onSuccess(data);
+        markLocalEditing();
+        connectAllThings();
+    });
+}
+
+function applyLightingRgb(r, g, b, prefix = "") {
+    const ids = prefix
+        ? [`${prefix}LampR`, `${prefix}LampG`, `${prefix}LampB`]
+        : ["lampR", "lampG", "lampB"];
+    const map = { [ids[0]]: r, [ids[1]]: g, [ids[2]]: b };
+    ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el || !shouldUpdateInput(el)) return;
+        el.value = String(map[id]);
+        el.dispatchEvent(new Event("input"));
+    });
+}
+
+// --- Мониторинг ---
 
 function connectRobotVacuum() {
     ajaxGet("/connect_robot_vacuum", (data) => {
-        const stateText = data.status === "online" ? "На связи" : data.status;
+        const stateText =
+            data.cleaningState === "running" ? "Уборка" : data.cleaningState === "docked" ? "На базе" : "На связи";
         const adminState = document.getElementById("adminVacuumState");
         const userState = document.getElementById("userVacuumState");
         if (adminState) adminState.textContent = `${stateText}, заряд ${data.batteryLevel}%`;
@@ -76,7 +130,7 @@ function connectRobotVacuum() {
 function connectSmartCurtains() {
     ajaxGet("/connect_smart_curtains", (data) => {
         const adminSlider = document.getElementById("curtainLevel");
-        if (adminSlider) adminSlider.value = String(data.positionPercent);
+        if (shouldUpdateInput(adminSlider)) adminSlider.value = String(data.positionPercent);
         const adminSummary = document.getElementById("adminSummaryCurtains");
         const userSummary = document.getElementById("userSummaryCurtains");
         if (adminSummary) adminSummary.textContent = `Шторы: открыты на ${data.positionPercent} %`;
@@ -92,45 +146,50 @@ function connectSmartKettle() {
         const userState = document.getElementById("userKettleStateText");
         const adminIndicator = document.getElementById("adminKettleIndicator");
         const userIndicator = document.getElementById("userKettleIndicator");
-        if (adminTemp) adminTemp.value = String(Math.round(data.currentWaterTemperature));
-        if (userTemp) userTemp.textContent = String(Math.round(data.currentWaterTemperature));
-        if (adminState) adminState.textContent = data.isBoiling ? "Кипячение" : "Ожидание";
-        if (userState) userState.textContent = data.isBoiling ? "Кипячение" : "Ожидание";
-        if (adminIndicator) adminIndicator.classList.toggle("on", Boolean(data.isBoiling));
-        if (userIndicator) userIndicator.classList.toggle("on", Boolean(data.isBoiling));
-        const adminSummary = document.getElementById("adminSummaryKettle");
-        const userSummary = document.getElementById("userSummaryKettle");
         const tempRounded = Math.round(data.currentWaterTemperature);
-        if (adminSummary) adminSummary.textContent = `Чайник: ${tempRounded} C`;
-        if (userSummary) userSummary.textContent = `Чайник: ${tempRounded} C`;
+        if (adminTemp) adminTemp.value = String(tempRounded);
+        if (userTemp) userTemp.textContent = String(tempRounded);
+        const boiling = Boolean(data.isBoiling);
+        if (adminState) adminState.textContent = boiling ? "Кипячение" : "Ожидание";
+        if (userState) userState.textContent = boiling ? "Кипячение" : "Ожидание";
+        if (adminIndicator) adminIndicator.classList.toggle("on", boiling);
+        if (userIndicator) userIndicator.classList.toggle("on", boiling);
+        const kettleTarget = document.getElementById("kettleTemp");
+        if (shouldUpdateInput(kettleTarget)) kettleTarget.value = String(data.targetTemperature);
     });
 }
 
 function connectTemperatureControl() {
     ajaxGet("/connect_temperature_control", (data) => {
-        const homeTemp = document.getElementById("homeTemp");
-        if (homeTemp) homeTemp.value = String(data.temperature);
+        const currentEl = document.getElementById("adminClimateCurrentTemp");
+        const targetDisplay = document.getElementById("adminClimateTargetTempDisplay");
+        const targetInput = document.getElementById("homeTargetTemp");
+        if (currentEl) currentEl.textContent = String(data.temperature);
+        if (targetDisplay) targetDisplay.textContent = String(data.targetTemperature);
+        if (shouldUpdateInput(targetInput)) targetInput.value = String(data.targetTemperature);
+
         const userCurrent = document.getElementById("userCurrentTemperature");
         const userTarget = document.getElementById("userTargetTemperature");
         if (userCurrent) userCurrent.textContent = String(data.temperature);
         if (userTarget) userTarget.textContent = String(data.targetTemperature);
-        const userSummary = document.getElementById("userSummaryTemperature");
-        if (userSummary) userSummary.textContent = `Температура: ${data.temperature} C (цель ${data.targetTemperature} C)`;
-        updateAdminClimateSummary();
+        updateAdminClimateSummary(data.temperature, data.targetTemperature, null, null);
     });
 }
 
 function connectHumidityControl() {
     ajaxGet("/connect_humidity_control", (data) => {
-        const homeHumidity = document.getElementById("homeHumidity");
-        if (homeHumidity) homeHumidity.value = String(data.humidity);
+        const currentEl = document.getElementById("adminClimateCurrentHumidity");
+        const targetDisplay = document.getElementById("adminClimateTargetHumidityDisplay");
+        const targetInput = document.getElementById("homeTargetHumidity");
+        if (currentEl) currentEl.textContent = String(data.humidity);
+        if (targetDisplay) targetDisplay.textContent = String(data.targetHumidity);
+        if (shouldUpdateInput(targetInput)) targetInput.value = String(data.targetHumidity);
+
         const userCurrent = document.getElementById("userCurrentHumidity");
         const userTarget = document.getElementById("userTargetHumidity");
         if (userCurrent) userCurrent.textContent = String(data.humidity);
         if (userTarget) userTarget.textContent = String(data.targetHumidity);
-        const userSummary = document.getElementById("userSummaryHumidity");
-        if (userSummary) userSummary.textContent = `Влажность: ${data.humidity} % (цель ${data.targetHumidity} %)`;
-        updateAdminClimateSummary();
+        updateAdminClimateSummary(null, null, data.humidity, data.targetHumidity);
     });
 }
 
@@ -138,46 +197,34 @@ function connectSmartLighting() {
     ajaxGet("/connect_smart_lighting", (data) => {
         const lightPower = document.getElementById("lightPower");
         const lightLevel = document.getElementById("lightLevel");
-        if (lightPower) lightPower.value = String(data.brightness);
-        if (lightLevel) lightLevel.value = String(data.brightness);
+        if (shouldUpdateInput(lightPower)) lightPower.value = String(data.brightness);
+        if (shouldUpdateInput(lightLevel)) lightLevel.value = String(data.brightness);
 
-        const lampR = document.getElementById("lampR");
-        const lampG = document.getElementById("lampG");
-        const lampB = document.getElementById("lampB");
-        const userLampR = document.getElementById("userLampR");
-        const userLampG = document.getElementById("userLampG");
-        const userLampB = document.getElementById("userLampB");
+        const r = data.rgb_r ?? 255;
+        const g = data.rgb_g ?? 180;
+        const b = data.rgb_b ?? 90;
+        applyLightingRgb(r, g, b, "");
+        applyLightingRgb(r, g, b, "user");
 
-        const avg = clamp(Math.round((data.colorTemperature - 2000) / 18), 0, 255);
-        const r = 255;
-        const g = clamp(avg, 80, 220);
-        const b = clamp(255 - avg, 60, 200);
-
-        if (lampR && lampG && lampB) {
-            lampR.value = String(r);
-            lampG.value = String(g);
-            lampB.value = String(b);
-            lampR.dispatchEvent(new Event("input"));
-        }
-        if (userLampR && userLampG && userLampB) {
-            userLampR.value = String(r);
-            userLampG.value = String(g);
-            userLampB.value = String(b);
-            userLampR.dispatchEvent(new Event("input"));
-        }
         const adminSummary = document.getElementById("adminSummaryLights");
         const userSummary = document.getElementById("userSummaryLights");
-        if (adminSummary) adminSummary.textContent = `Лампы: ${data.brightness} % яркости, ${data.colorTemperature} K`;
-        if (userSummary) userSummary.textContent = `Лампы: яркость ${data.brightness} %, ${data.colorTemperature} K`;
+        if (adminSummary) {
+            adminSummary.textContent = `Лампы: ${data.brightness} %, RGB(${r}, ${g}, ${b})`;
+        }
+        if (userSummary) {
+            userSummary.textContent = `Лампы: яркость ${data.brightness} %, RGB(${r}, ${g}, ${b})`;
+        }
     });
 }
 
-function updateAdminClimateSummary() {
-    const t = document.getElementById("homeTemp");
-    const h = document.getElementById("homeHumidity");
+function updateAdminClimateSummary(currentT, targetT, currentH, targetH) {
     const adminSummary = document.getElementById("adminSummaryClimate");
-    if (!t || !h || !adminSummary) return;
-    adminSummary.textContent = `Климат: ${t.value} C / ${h.value} % влажности`;
+    if (!adminSummary) return;
+    const tCur = currentT ?? document.getElementById("adminClimateCurrentTemp")?.textContent ?? "—";
+    const tTar = targetT ?? document.getElementById("adminClimateTargetTempDisplay")?.textContent ?? "—";
+    const hCur = currentH ?? document.getElementById("adminClimateCurrentHumidity")?.textContent ?? "—";
+    const hTar = targetH ?? document.getElementById("adminClimateTargetHumidityDisplay")?.textContent ?? "—";
+    adminSummary.textContent = `Климат: ${tCur} C (цель ${tTar} C) / ${hCur} % (цель ${hTar} %)`;
 }
 
 function setupRgbPreview(rId, gId, bId, previewId, valueId) {
@@ -187,7 +234,6 @@ function setupRgbPreview(rId, gId, bId, previewId, valueId) {
     const preview = document.getElementById(previewId);
     const valueLabel = document.getElementById(valueId);
     if (!rInput || !gInput || !bInput || !preview || !valueLabel) return;
-
     const update = () => {
         const r = clamp(rInput.value, 0, 255);
         const g = clamp(gInput.value, 0, 255);
@@ -220,4 +266,10 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(updateDateTimeLocal, 1000);
     connectAllThings();
     setInterval(connectAllThings, 10000);
+
+    document
+        .querySelectorAll(
+            "#kettleTemp, #curtainLevel, #lightPower, #lightLevel, #lampR, #lampG, #lampB, #userLampR, #userLampG, #userLampB, #homeTargetTemp, #homeTargetHumidity"
+        )
+        .forEach((input) => input.addEventListener("input", markInputDirty));
 });

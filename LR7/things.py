@@ -130,21 +130,31 @@ class RobotVacuum(SmartDevice):
 
 
 class SmartCurtains(SmartDevice):
+    DRIFT_INTERVAL_SEC = 120.0
+
     def __init__(self, device_id: str, name: str):
         super().__init__(device_id, name)
         self.positionPercent: int = 60
         self.mode: str = "manual"
+        self._last_drift_at: float = time.monotonic()
 
     def connect(self) -> dict:
-        self.emulate()
+        self._maybe_drift()
         self.status = "online"
         payload = {"id": self.id, "positionPercent": self.positionPercent, "mode": self.mode}
         print(f"[SmartCurtains.connect] {payload}")
         return payload
 
-    def emulate(self) -> None:
-        shift = random.randint(-3, 3)
+    def _maybe_drift(self) -> None:
+        now = time.monotonic()
+        if now - self._last_drift_at < self.DRIFT_INTERVAL_SEC:
+            return
+        self._last_drift_at = now
+        shift = random.choice([-1, 0, 1])
+        if shift == 0:
+            return
         self.positionPercent = max(0, min(100, self.positionPercent + shift))
+
 
     def control(self, request: Request) -> dict:
         action = request.args.get("action", "set")
@@ -169,12 +179,14 @@ class SmartCurtains(SmartDevice):
 
     def open(self, percent: int) -> str:
         self.positionPercent = max(0, min(100, percent))
+        self._last_drift_at = time.monotonic()
         msg = f"{self.name}: opened to {self.positionPercent}%"
         print(f"[SmartCurtains.open] {msg}")
         return msg
 
     def close(self) -> str:
         self.positionPercent = 0
+        self._last_drift_at = time.monotonic()
         msg = f"{self.name}: closed"
         print(f"[SmartCurtains.close] {msg}")
         return msg
@@ -266,9 +278,13 @@ class TemperatureControl(SmartDevice):
 
     def emulate(self) -> None:
         now = time.monotonic()
-        if now - self._last_emulate_at >= 15.0:
-            self.temperature = round(max(16.0, min(30.0, self.temperature + random.choice([-0.1, 0.1]))), 1)
-            self._last_emulate_at = now
+        if now - self._last_emulate_at < 20.0:
+            return
+        self._last_emulate_at = now
+        if self.temperature < self.targetTemperature:
+            self.temperature = round(min(self.targetTemperature, self.temperature + 0.2), 1)
+        elif self.temperature > self.targetTemperature:
+            self.temperature = round(max(self.targetTemperature, self.temperature - 0.2), 1)
 
     def control(self, request: Request) -> dict:
         target, err = _parse_float(request.args.get("target_temperature", str(self.targetTemperature)), "target_temperature")
@@ -301,9 +317,13 @@ class HumidityControl(SmartDevice):
 
     def emulate(self) -> None:
         now = time.monotonic()
-        if now - self._last_emulate_at >= 15.0:
-            self.humidity = round(max(25.0, min(70.0, self.humidity + random.choice([-0.3, 0.3]))), 1)
-            self._last_emulate_at = now
+        if now - self._last_emulate_at < 20.0:
+            return
+        self._last_emulate_at = now
+        if self.humidity < self.targetHumidity:
+            self.humidity = round(min(self.targetHumidity, self.humidity + 0.5), 1)
+        elif self.humidity > self.targetHumidity:
+            self.humidity = round(max(self.targetHumidity, self.humidity - 0.5), 1)
 
     def control(self, request: Request) -> dict:
         target, err = _parse_float(request.args.get("target_humidity", str(self.targetHumidity)), "target_humidity")
@@ -328,24 +348,24 @@ class SmartLighting(SmartDevice):
         super().__init__(device_id, name)
         self.brightness: int = 70
         self.colorTemperature: int = 3500
+        self.rgb_r: int = 255
+        self.rgb_g: int = 180
+        self.rgb_b: int = 90
         self.isOn: bool = True
 
     def connect(self) -> dict:
-        self.emulate()
         self.status = "online"
         payload = {
             "id": self.id,
             "brightness": self.brightness,
             "colorTemperature": self.colorTemperature,
+            "rgb_r": self.rgb_r,
+            "rgb_g": self.rgb_g,
+            "rgb_b": self.rgb_b,
             "isOn": self.isOn,
         }
         print(f"[SmartLighting.connect] {payload}")
         return payload
-
-    def emulate(self) -> None:
-        if self.isOn:
-            self.brightness = max(10, min(100, self.brightness + random.randint(-4, 4)))
-            self.colorTemperature = max(2400, min(5000, self.colorTemperature + random.randint(-120, 120)))
 
     def control(self, request: Request) -> dict:
         action = request.args.get("action", "apply")
@@ -360,15 +380,21 @@ class SmartLighting(SmartDevice):
             msg = f"{self.name}: turned off"
         else:
             brightness, err_b = _parse_int(request.args.get("brightness", str(self.brightness)), "brightness", 0, 100)
-            color_temp, err_c = _parse_int(
-                request.args.get("color_temperature", str(self.colorTemperature)), "color_temperature", 2000, 6500
-            )
+            r, err_r = _parse_int(request.args.get("r", str(self.rgb_r)), "r", 0, 255)
+            g, err_g = _parse_int(request.args.get("g", str(self.rgb_g)), "g", 0, 255)
+            b, err_b2 = _parse_int(request.args.get("b", str(self.rgb_b)), "b", 0, 255)
             if err_b:
                 return {"ok": False, "message": err_b, "brightness": self.brightness}
-            if err_c:
-                return {"ok": False, "message": err_c, "colorTemperature": self.colorTemperature}
+            if err_r:
+                return {"ok": False, "message": err_r, "brightness": self.brightness}
+            if err_g:
+                return {"ok": False, "message": err_g, "brightness": self.brightness}
+            if err_b2:
+                return {"ok": False, "message": err_b2, "brightness": self.brightness}
+            self.rgb_r, self.rgb_g, self.rgb_b = r, g, b
             self.setBrightness(brightness)
-            self.setColorTemperature(color_temp)
+            avg = int((self.rgb_r + self.rgb_g + self.rgb_b) / 3)
+            self.colorTemperature = max(2000, min(6500, 2000 + int((avg / 255) * 4500)))
             self.isOn = self.brightness > 0
             msg = f"{self.name}: settings applied"
         print(f"[SmartLighting.control] {msg}")
@@ -377,6 +403,9 @@ class SmartLighting(SmartDevice):
             "message": msg,
             "brightness": self.brightness,
             "colorTemperature": self.colorTemperature,
+            "rgb_r": self.rgb_r,
+            "rgb_g": self.rgb_g,
+            "rgb_b": self.rgb_b,
             "isOn": self.isOn,
         }
 

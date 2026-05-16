@@ -86,18 +86,27 @@ class SmartCurtains(SmartDevice):
         print(f"[SmartCurtains.connect] {payload}")
         return payload
 
-    def emulate(self) -> None:
-        shift = random.randint(-5, 5)
+    def _maybe_drift(self) -> None:
+        now = time.monotonic()
+        if now - self._last_drift_at < self.DRIFT_INTERVAL_SEC:
+            return
+        self._last_drift_at = now
+        shift = random.choice([-1, 0, 1])
+        if shift == 0:
+            return
         self.positionPercent = max(0, min(100, self.positionPercent + shift))
+
 
     def open(self, percent: int) -> str:
         self.positionPercent = max(0, min(100, percent))
+        self._last_drift_at = time.monotonic()
         msg = f"{self.name}: opened to {self.positionPercent}%"
         print(f"[SmartCurtains.open] {msg}")
         return msg
 
     def close(self) -> str:
         self.positionPercent = 0
+        self._last_drift_at = time.monotonic()
         msg = f"{self.name}: closed"
         print(f"[SmartCurtains.close] {msg}")
         return msg
@@ -171,9 +180,13 @@ class TemperatureControl(SmartDevice):
 
     def emulate(self) -> None:
         now = time.monotonic()
-        if now - self._last_emulate_at >= 15.0:
-            self.temperature = round(max(16.0, min(30.0, self.temperature + random.choice([-0.1, 0.1]))), 1)
-            self._last_emulate_at = now
+        if now - self._last_emulate_at < 20.0:
+            return
+        self._last_emulate_at = now
+        if self.temperature < self.targetTemperature:
+            self.temperature = round(min(self.targetTemperature, self.temperature + 0.2), 1)
+        elif self.temperature > self.targetTemperature:
+            self.temperature = round(max(self.targetTemperature, self.temperature - 0.2), 1)
 
     def setTargetTemperature(self, temp: float) -> str:
         self.targetTemperature = float(temp)
@@ -202,9 +215,13 @@ class HumidityControl(SmartDevice):
 
     def emulate(self) -> None:
         now = time.monotonic()
-        if now - self._last_emulate_at >= 15.0:
-            self.humidity = round(max(25.0, min(70.0, self.humidity + random.choice([-0.3, 0.3]))), 1)
-            self._last_emulate_at = now
+        if now - self._last_emulate_at < 20.0:
+            return
+        self._last_emulate_at = now
+        if self.humidity < self.targetHumidity:
+            self.humidity = round(min(self.targetHumidity, self.humidity + 0.5), 1)
+        elif self.humidity > self.targetHumidity:
+            self.humidity = round(max(self.targetHumidity, self.humidity - 0.5), 1)
 
     def setTargetHumidity(self, humidity: float) -> str:
         self.targetHumidity = float(humidity)
@@ -229,13 +246,13 @@ class SmartLighting(SmartDevice):
             "id": self.id,
             "brightness": self.brightness,
             "colorTemperature": self.colorTemperature,
+            "rgb_r": self.rgb_r,
+            "rgb_g": self.rgb_g,
+            "rgb_b": self.rgb_b,
+            "isOn": True,
         }
         print(f"[SmartLighting.connect] {payload}")
         return payload
-
-    def emulate(self) -> None:
-        self.brightness = max(10, min(100, self.brightness + random.randint(-4, 4)))
-        self.colorTemperature = max(2400, min(5000, self.colorTemperature + random.randint(-120, 120)))
 
     def setBrightness(self, value: int) -> str:
         self.brightness = max(0, min(100, value))

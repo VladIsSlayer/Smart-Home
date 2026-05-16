@@ -79,14 +79,22 @@
                 <article class="tile">
                     <h2 class="section-title">Климат-контроль 🌡️</h2>
                     <form class="form-grid">
-                        <label for="homeTemp">Температура в доме (C):</label>
-                        <input id="homeTemp" type="number" min="16" max="30" value="24">
+                        <p class="device-meta">
+                            Текущая температура: <strong id="adminClimateCurrentTemp">22.0</strong> C
+                            &nbsp;|&nbsp; цель: <strong id="adminClimateTargetTempDisplay">24.0</strong> C
+                        </p>
+                        <label for="homeTargetTemp">Задать целевую температуру (C):</label>
+                        <input id="homeTargetTemp" type="number" min="16" max="30" value="24">
 
-                        <label for="homeHumidity">Влажность в доме (%):</label>
-                        <input id="homeHumidity" type="number" min="0" max="100" value="50">
+                        <p class="device-meta">
+                            Текущая влажность: <strong id="adminClimateCurrentHumidity">45.0</strong> %
+                            &nbsp;|&nbsp; цель: <strong id="adminClimateTargetHumidityDisplay">50.0</strong> %
+                        </p>
+                        <label for="homeTargetHumidity">Задать целевую влажность (%):</label>
+                        <input id="homeTargetHumidity" type="number" min="0" max="100" value="50">
 
                         <div class="button-group">
-                            <button id="adminClimateApplyBtn" class="btn" type="button">Сохранить температуру и влажность</button>
+                            <button id="adminClimateApplyBtn" class="btn" type="button">Применить цели климата</button>
                         </div>
                     </form>
                 </article>
