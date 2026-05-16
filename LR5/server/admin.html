@@ -64,6 +64,18 @@
                     </form>
                 </article>
 
+                <article class="tile tile-wide">
+                    <h2 class="section-title">Анализ и визуализация 📈</h2>
+                    <ul id="analysisStats">
+                        <li>Средняя температура: —</li>
+                        <li>Максимальная температура: —</li>
+                        <li>Средняя влажность: —</li>
+                        <li>Максимальная влажность: —</li>
+                    </ul>
+                    <h3>График температуры</h3>
+                    <canvas id="temperatureChart" height="120"></canvas>
+                </article>
+
                 <article class="tile">
                     <h2 class="section-title">Климат-контроль 🌡️</h2>
                     <form class="form-grid">
@@ -72,14 +84,14 @@
                             &nbsp;|&nbsp; цель: <strong id="adminClimateTargetTempDisplay">24.0</strong> C
                         </p>
                         <label for="homeTargetTemp">Задать целевую температуру (C):</label>
-                        <input id="homeTargetTemp" type="number" min="16" max="30" step="0.1" value="24">
+                        <input id="homeTargetTemp" type="number" min="16" max="30" value="24">
 
                         <p class="device-meta">
                             Текущая влажность: <strong id="adminClimateCurrentHumidity">45.0</strong> %
                             &nbsp;|&nbsp; цель: <strong id="adminClimateTargetHumidityDisplay">50.0</strong> %
                         </p>
                         <label for="homeTargetHumidity">Задать целевую влажность (%):</label>
-                        <input id="homeTargetHumidity" type="number" min="25" max="70" step="0.1" value="50">
+                        <input id="homeTargetHumidity" type="number" min="0" max="100" value="50">
 
                         <div class="button-group">
                             <button id="adminClimateApplyBtn" class="btn" type="button">Применить цели климата</button>
@@ -90,13 +102,23 @@
                 <article class="tile">
                     <h2 class="section-title">Умные шторы 🪟</h2>
                     <form class="form-grid">
-                        <label for="curtainLevel">Открытие штор (%):</label>
+                        <p class="device-meta">
+                            Текущее положение: <strong id="adminCurtainsPosition">60</strong> %
+                            <span id="adminCurtainsTargetWrap" class="is-hidden">
+                                &nbsp;→ цель <strong id="adminCurtainsTarget">60</strong> %
+                            </span>
+                        </p>
+                        <p class="device-meta">
+                            Сохранённое открытие (кнопка «Открыть»):
+                            <strong id="adminCurtainsSavedOpen">60</strong> %
+                        </p>
+                        <label for="curtainLevel">Задать открытие на слайдере (%):</label>
                         <input id="curtainLevel" type="range" min="0" max="100" value="60">
 
                         <div class="button-group">
                             <button id="adminCurtainsOpenBtn" class="btn" type="button">Открыть</button>
                             <button id="adminCurtainsCloseBtn" class="btn" type="button">Закрыть</button>
-                            <button id="adminCurtainsSaveBtn" class="btn" type="button">Сохранить положение</button>
+                            <button id="adminCurtainsSaveBtn" class="btn" type="button">Сохранить для «Открыть»</button>
                         </div>
                     </form>
                 </article>
@@ -104,8 +126,14 @@
                 <article class="tile">
                     <h2 class="section-title">Умные лампы 💡</h2>
                     <form class="form-grid">
+                        <div class="power-row">
+                            <span>Состояние ламп:</span>
+                            <span id="adminLightsIndicator" class="power-indicator on"></span>
+                            <strong id="adminLightsStateText">Включены</strong>
+                        </div>
                         <label for="lightPower">Яркость ламп (%):</label>
                         <input id="lightPower" type="range" min="0" max="100" value="70">
+                        <p class="device-meta">Яркость меняется сразу при движении ползунка.</p>
 
                         <div class="color-menu">
                             <h3>Цвет ламп (RGB)</h3>
@@ -144,6 +172,7 @@
                         <div class="button-group">
                             <button id="adminLightsOnBtn" class="btn" type="button">Включить лампы</button>
                             <button id="adminLightsOffBtn" class="btn" type="button">Выключить лампы</button>
+                            <button id="adminLightsBrightnessBtn" class="btn" type="button">Сохранить яркость</button>
                             <button id="adminLightsApplyBtn" class="btn" type="button">Применить RGB</button>
                         </div>
                     </form>
@@ -185,9 +214,12 @@
                     </form>
                 </article>
 
-                <article class="tile">
+                <article class="tile tile-wide">
                     <h2 class="section-title">Сценарии ⏰</h2>
+                    <h3>Готовые и сохранённые сценарии</h3>
+                    <ul id="scenesList" class="scenes-list"></ul>
                     <form class="form-grid">
+                        <input id="sceneEditId" type="hidden" value="">
                         <label for="sceneName">Название сценария:</label>
                         <input id="sceneName" type="text" placeholder="Например: Теплый вечер">
 
@@ -198,15 +230,17 @@
                         <input id="sceneTime" type="time">
 
                         <h3>Что сохранить в сценарий</h3>
-                        <label><input type="checkbox" checked> Лампы: яркость</label>
-                        <label><input type="checkbox" checked> Лампы: цвет RGB</label>
-                        <label><input type="checkbox"> Шторы: положение</label>
-                        <label><input type="checkbox"> Чайник: температура</label>
-                        <label><input type="checkbox"> Климат: температура</label>
-                        <label><input type="checkbox"> Климат: влажность</label>
-                        <label><input type="checkbox"> Пылесос: запуск</label>
+                        <label><input id="sceneChkLighting" type="checkbox" checked> Лампы</label>
+                        <label><input id="sceneChkCurtains" type="checkbox"> Шторы</label>
+                        <label><input id="sceneChkKettle" type="checkbox"> Чайник</label>
+                        <label><input id="sceneChkClimateT" type="checkbox"> Климат: температура</label>
+                        <label><input id="sceneChkClimateH" type="checkbox"> Климат: влажность</label>
+                        <label><input id="sceneChkVacuum" type="checkbox"> Пылесос</label>
 
-                        <button id="adminSceneSaveBtn" class="btn btn-admin" type="button">Сохранить сценарий</button>
+                        <div class="button-group">
+                            <button id="adminSceneSaveBtn" class="btn btn-admin" type="button">Сохранить сценарий</button>
+                            <button id="adminSceneResetBtn" class="btn" type="button">Очистить форму</button>
+                        </div>
                     </form>
                 </article>
             </div>
@@ -219,6 +253,7 @@
             window.location.href = "index.html";
         }
     </script>
-    <script src="script.js?v=5"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="script.js?v=11"></script>
 </body>
 </html>

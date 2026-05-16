@@ -62,7 +62,7 @@ function setupThemeToggle() {
 
 function updateDateTimeLocal() {
     const now = new Date().toLocaleString("ru-RU");
-    ["adminDateTime", "userDateTime"].forEach((id) => {
+    ["indexDateTime", "adminDateTime", "userDateTime"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.textContent = now;
     });
@@ -70,7 +70,14 @@ function updateDateTimeLocal() {
 
 function ajaxGet(url, onSuccess, onError) {
     fetch(url)
-        .then((response) => response.json())
+        .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const msg = data.message || `HTTP ${response.status} для ${url}`;
+                throw new Error(msg);
+            }
+            return data;
+        })
         .then(onSuccess)
         .catch((error) => {
             const msg = `Ошибка запроса ${url}: ${error.message}`;
@@ -88,13 +95,39 @@ function buildQuery(params) {
     return text ? `?${text}` : "";
 }
 
-function controlGet(path, params, onSuccess) {
+function controlGet(path, params, onSuccess, refreshMode = "all") {
     ajaxGet(`${path}${buildQuery(params)}`, (data) => {
         if (data.message) showMessage(data.message, !data.ok);
         if (onSuccess) onSuccess(data);
         markLocalEditing();
-        connectAllThings();
+        if (refreshMode === "all") connectAllThings();
+        else if (refreshMode === "lighting") {
+            if (data.brightness !== undefined) updateLightingFromData(data);
+            else connectSmartLighting();
+        }
     });
+}
+
+function debounce(fn, delayMs) {
+    let timerId = null;
+    return (...args) => {
+        clearTimeout(timerId);
+        timerId = setTimeout(() => fn(...args), delayMs);
+    };
+}
+
+function apiPost(path, body, onSuccess) {
+    fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            if (data.message) showMessage(data.message, !data.ok);
+            if (onSuccess) onSuccess(data);
+        })
+        .catch((error) => showMessage(`Ошибка запроса ${path}: ${error.message}`, true));
 }
 
 function applyLightingRgb(r, g, b, prefix = "") {
@@ -133,27 +166,90 @@ function showAutomation(actions) {
 }
 
 function renderAnalysis(analysis) {
-    if (!analysis) return;
     const list = document.getElementById("analysisStats");
-    if (!list) return;
+    if (!list || !analysis) return;
     const fmt = (v) => (v === null || v === undefined ? "—" : String(v));
+    const hasData =
+        analysis.avg_temperature !== null &&
+        analysis.avg_temperature !== undefined;
     list.innerHTML = `
         <li>Средняя температура: ${fmt(analysis.avg_temperature)} C</li>
         <li>Максимальная температура: ${fmt(analysis.max_temperature)} C</li>
         <li>Средняя влажность: ${fmt(analysis.avg_humidity)} %</li>
         <li>Максимальная влажность: ${fmt(analysis.max_humidity)} %</li>
+        ${hasData ? "" : "<li class=\"device-meta\">Подождите 15–30 с: идёт накопление данных с датчиков…</li>"}
     `;
+}
+
+function refreshAnalysisPanel() {
+    if (!document.getElementById("analysisStats")) return;
+    ajaxGet("/api/analysis", (data) => {
+        if (data.analysis) renderAnalysis(data.analysis);
+    });
+}
+
+let temperatureChartInstance = null;
+
+function loadTemperatureChart() {
+    const canvas = document.getElementById("temperatureChart");
+    if (!canvas || typeof Chart === "undefined") return;
+    ajaxGet("/api/chart/temperature", (payload) => {
+        const chart = payload.chart || { labels: [], values: [] };
+        if (temperatureChartInstance) {
+            temperatureChartInstance.data.labels = chart.labels;
+            temperatureChartInstance.data.datasets[0].data = chart.values;
+            temperatureChartInstance.update();
+            return;
+        }
+        temperatureChartInstance = new Chart(canvas, {
+            type: "line",
+            data: {
+                labels: chart.labels,
+                datasets: [{
+                    label: "Температура, C",
+                    data: chart.values,
+                    borderColor: "#2f6fed",
+                    backgroundColor: "rgba(47, 111, 237, 0.15)",
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 3,
+                }],
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: true } },
+                scales: {
+                    y: { beginAtZero: false, title: { display: true, text: "C" } },
+                    x: { ticks: { maxRotation: 45, minRotation: 0 } },
+                },
+            },
+        });
+    });
 }
 
 function connectSmartCurtains() {
     ajaxGet("/connect_smart_curtains", (data) => {
         if (data.automation) showAutomation(data.automation);
+        if (data.analysis) renderAnalysis(data.analysis);
+        const pos = data.positionPercent ?? 0;
+        const target = data.targetPosition ?? pos;
+        const adminPos = document.getElementById("adminCurtainsPosition");
+        const adminTarget = document.getElementById("adminCurtainsTarget");
+        const adminTargetWrap = document.getElementById("adminCurtainsTargetWrap");
+        if (adminPos) adminPos.textContent = String(pos);
+        if (adminTarget) adminTarget.textContent = String(target);
+        if (adminTargetWrap) adminTargetWrap.classList.toggle("is-hidden", pos === target);
+        const savedOpen = document.getElementById("adminCurtainsSavedOpen");
+        if (savedOpen && data.savedOpenPercent !== undefined) {
+            savedOpen.textContent = String(data.savedOpenPercent);
+        }
         const adminSlider = document.getElementById("curtainLevel");
-        if (shouldUpdateInput(adminSlider)) adminSlider.value = String(data.positionPercent);
+        if (shouldUpdateInput(adminSlider)) adminSlider.value = String(pos);
         const adminSummary = document.getElementById("adminSummaryCurtains");
         const userSummary = document.getElementById("userSummaryCurtains");
-        if (adminSummary) adminSummary.textContent = `Шторы: открыты на ${data.positionPercent} %`;
-        if (userSummary) userSummary.textContent = `Шторы: открыты на ${data.positionPercent} %`;
+        const posText = pos === target ? `${pos} %` : `${pos} % -> ${target} %`;
+        if (adminSummary) adminSummary.textContent = `Шторы: ${posText}`;
+        if (userSummary) userSummary.textContent = `Шторы: ${posText}`;
     });
 }
 
@@ -216,28 +312,71 @@ function connectHumidityControl() {
     });
 }
 
+function updateLightingFromData(data) {
+    const lightPower = document.getElementById("lightPower");
+    const lightLevel = document.getElementById("lightLevel");
+    if (shouldUpdateInput(lightPower)) lightPower.value = String(data.brightness);
+    if (shouldUpdateInput(lightLevel)) lightLevel.value = String(data.brightness);
+
+    const r = data.rgb_r ?? 255;
+    const g = data.rgb_g ?? 180;
+    const b = data.rgb_b ?? 90;
+    applyLightingRgb(r, g, b, "");
+    applyLightingRgb(r, g, b, "user");
+
+    const isOn = Boolean(data.isOn);
+    const adminIndicator = document.getElementById("adminLightsIndicator");
+    const adminState = document.getElementById("adminLightsStateText");
+    if (adminIndicator) adminIndicator.classList.toggle("on", isOn);
+    if (adminState) adminState.textContent = isOn ? "Включены" : "Выключены";
+
+    const adminSummary = document.getElementById("adminSummaryLights");
+    const userSummary = document.getElementById("userSummaryLights");
+    const stateLabel = isOn ? "вкл." : "выкл.";
+    if (adminSummary) {
+        adminSummary.textContent = `Лампы: ${stateLabel}, ${data.brightness} %, RGB(${r}, ${g}, ${b})`;
+    }
+    if (userSummary) {
+        userSummary.textContent = `Лампы: ${stateLabel}, ${data.brightness} %, RGB(${r}, ${g}, ${b})`;
+    }
+}
+
 function connectSmartLighting() {
-    ajaxGet("/connect_smart_lighting", (data) => {
-        const lightPower = document.getElementById("lightPower");
-        const lightLevel = document.getElementById("lightLevel");
-        if (shouldUpdateInput(lightPower)) lightPower.value = String(data.brightness);
-        if (shouldUpdateInput(lightLevel)) lightLevel.value = String(data.brightness);
+    ajaxGet("/connect_smart_lighting", (data) => updateLightingFromData(data));
+}
 
-        const r = data.rgb_r ?? 255;
-        const g = data.rgb_g ?? 180;
-        const b = data.rgb_b ?? 90;
-        applyLightingRgb(r, g, b, "");
-        applyLightingRgb(r, g, b, "user");
+function applyLightingBrightness(sliderId) {
+    const isAdmin = sliderId === "lightPower";
+    const brightness = document.getElementById(sliderId)?.value ?? 70;
+    const r = document.getElementById(isAdmin ? "lampR" : "userLampR")?.value ?? 255;
+    const g = document.getElementById(isAdmin ? "lampG" : "userLampG")?.value ?? 180;
+    const b = document.getElementById(isAdmin ? "lampB" : "userLampB")?.value ?? 90;
+    controlGet(
+        "/control_smart_lighting",
+        { action: "apply", brightness, r, g, b },
+        (data) => updateLightingFromData(data),
+        "none"
+    );
+}
 
-        const adminSummary = document.getElementById("adminSummaryLights");
-        const userSummary = document.getElementById("userSummaryLights");
-        if (adminSummary) {
-            adminSummary.textContent = `Лампы: ${data.brightness} %, RGB(${r}, ${g}, ${b})`;
-        }
-        if (userSummary) {
-            userSummary.textContent = `Лампы: яркость ${data.brightness} %, RGB(${r}, ${g}, ${b})`;
-        }
-    });
+const debouncedAdminBrightness = debounce(() => applyLightingBrightness("lightPower"), 200);
+const debouncedUserBrightness = debounce(() => applyLightingBrightness("lightLevel"), 200);
+
+function setupLightingBrightnessLive() {
+    const lightPower = document.getElementById("lightPower");
+    if (lightPower) {
+        lightPower.addEventListener("input", (event) => {
+            markInputDirty(event);
+            debouncedAdminBrightness();
+        });
+    }
+    const lightLevel = document.getElementById("lightLevel");
+    if (lightLevel) {
+        lightLevel.addEventListener("input", (event) => {
+            markInputDirty(event);
+            debouncedUserBrightness();
+        });
+    }
 }
 
 function updateAdminClimateSummary(currentT, targetT, currentH, targetH) {
@@ -301,31 +440,43 @@ function setupControlActions() {
     });
 
     bind("adminCurtainsOpenBtn", () => {
-        controlGet("/control_smart_curtains", { action: "open", percent: 100 });
+        controlGet("/control_smart_curtains", { action: "open" });
     });
-    bind("userCurtainsOpenBtn", () => controlGet("/control_smart_curtains", { action: "open", percent: 100 }));
+    bind("userCurtainsOpenBtn", () => controlGet("/control_smart_curtains", { action: "open" }));
     bind("adminCurtainsCloseBtn", () => controlGet("/control_smart_curtains", { action: "close" }));
     bind("userCurtainsCloseBtn", () => controlGet("/control_smart_curtains", { action: "close" }));
     bind("adminCurtainsSaveBtn", () => {
         const level = document.getElementById("curtainLevel");
-        controlGet("/control_smart_curtains", { action: "set", percent: level ? level.value : 0 });
+        controlGet("/control_smart_curtains", { action: "save", percent: level ? level.value : 60 });
     });
 
     bind("adminLightsOnBtn", () => controlGet("/control_smart_lighting", { action: "on" }));
     bind("adminLightsOffBtn", () => controlGet("/control_smart_lighting", { action: "off" }));
+    bind("adminLightsBrightnessBtn", () => applyLightingBrightness("lightPower"));
+    bind("userLightsBrightnessBtn", () => applyLightingBrightness("lightLevel"));
     bind("adminLightsApplyBtn", () => {
         const brightness = document.getElementById("lightPower")?.value || 70;
         const r = document.getElementById("lampR")?.value || 255;
         const g = document.getElementById("lampG")?.value || 180;
         const b = document.getElementById("lampB")?.value || 90;
-        controlGet("/control_smart_lighting", { action: "apply", brightness, r, g, b });
+        controlGet(
+            "/control_smart_lighting",
+            { action: "apply", brightness, r, g, b },
+            (data) => updateLightingFromData(data),
+            "lighting"
+        );
     });
     bind("userLightsApplyBtn", () => {
         const brightness = document.getElementById("lightLevel")?.value || 70;
         const r = document.getElementById("userLampR")?.value || 255;
         const g = document.getElementById("userLampG")?.value || 180;
         const b = document.getElementById("userLampB")?.value || 90;
-        controlGet("/control_smart_lighting", { action: "apply", brightness, r, g, b });
+        controlGet(
+            "/control_smart_lighting",
+            { action: "apply", brightness, r, g, b },
+            (data) => updateLightingFromData(data),
+            "lighting"
+        );
     });
 
     bind("adminVacuumStartBtn", () => controlGet("/control_robot_vacuum", { action: "start", mode: "auto" }));
@@ -343,20 +494,173 @@ function setupControlActions() {
     });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    setupThemeToggle();
-    setupSummaryToggles();
+function collectSceneActionsFromForm() {
+    const actions = {};
+    if (document.getElementById("sceneChkLighting")?.checked) {
+        actions.lighting = {
+            on: Number(document.getElementById("lightPower")?.value || 0) > 0,
+            brightness: Number(document.getElementById("lightPower")?.value || 70),
+            r: Number(document.getElementById("lampR")?.value || 255),
+            g: Number(document.getElementById("lampG")?.value || 180),
+            b: Number(document.getElementById("lampB")?.value || 90),
+        };
+    }
+    if (document.getElementById("sceneChkCurtains")?.checked) {
+        actions.curtains = { percent: Number(document.getElementById("curtainLevel")?.value || 60) };
+    }
+    if (document.getElementById("sceneChkKettle")?.checked) {
+        actions.kettle = {
+            action: "target",
+            target_temp: Number(document.getElementById("kettleTemp")?.value || 90),
+        };
+    }
+    if (document.getElementById("sceneChkClimateT")?.checked) {
+        actions.temperature = { target: Number(document.getElementById("homeTargetTemp")?.value || 24) };
+    }
+    if (document.getElementById("sceneChkClimateH")?.checked) {
+        actions.humidity = { target: Number(document.getElementById("homeTargetHumidity")?.value || 50) };
+    }
+    if (document.getElementById("sceneChkVacuum")?.checked) {
+        actions.vacuum = { action: "start", mode: "auto" };
+    }
+    return actions;
+}
+
+function resetSceneForm() {
+    const idEl = document.getElementById("sceneEditId");
+    if (idEl) idEl.value = "";
+    const nameEl = document.getElementById("sceneName");
+    if (nameEl) nameEl.value = "";
+    ["sceneDate", "sceneTime"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = "";
+    });
+}
+
+function fillSceneForm(scene) {
+    const idEl = document.getElementById("sceneEditId");
+    if (idEl) idEl.value = scene.id || "";
+    const nameEl = document.getElementById("sceneName");
+    if (nameEl) nameEl.value = scene.name || "";
+    const dateEl = document.getElementById("sceneDate");
+    if (dateEl) dateEl.value = scene.date || "";
+    const timeEl = document.getElementById("sceneTime");
+    if (timeEl) timeEl.value = scene.time || "";
+    const actions = scene.actions || {};
+    const setChk = (id, on) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = Boolean(on);
+    };
+    setChk("sceneChkLighting", actions.lighting);
+    setChk("sceneChkCurtains", actions.curtains);
+    setChk("sceneChkKettle", actions.kettle);
+    setChk("sceneChkClimateT", actions.temperature);
+    setChk("sceneChkClimateH", actions.humidity);
+    setChk("sceneChkVacuum", actions.vacuum);
+}
+
+function renderScenesList(scenes) {
+    const list = document.getElementById("scenesList");
+    if (!list) return;
+    if (!scenes || !scenes.length) {
+        list.innerHTML = "<li>Нет сценариев</li>";
+        return;
+    }
+    list.innerHTML = scenes
+        .map((scene) => {
+            const when = [scene.date, scene.time].filter(Boolean).join(" ");
+            const badge = scene.builtin ? "встроенный" : "пользовательский";
+            const schedule = when ? ` · ${when}` : "";
+            return `<li data-scene-id="${scene.id}">
+                <div class="scene-meta">
+                    <span class="scene-title">${scene.name}</span>
+                    <span> (${badge}${schedule})</span>
+                </div>
+                <button type="button" class="btn btn-scene-apply" data-id="${scene.id}">Применить</button>
+                <button type="button" class="btn btn-scene-edit" data-id="${scene.id}">Изменить</button>
+                ${scene.builtin ? "" : `<button type="button" class="btn btn-scene-delete" data-id="${scene.id}">Удалить</button>`}
+            </li>`;
+        })
+        .join("");
+
+    list.querySelectorAll(".btn-scene-apply").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            apiPost("/api/scenes/apply", { id: btn.getAttribute("data-id") }, () => connectAllThings());
+        });
+    });
+    list.querySelectorAll(".btn-scene-edit").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const scene = scenes.find((s) => s.id === btn.getAttribute("data-id"));
+            if (scene) fillSceneForm(scene);
+        });
+    });
+    list.querySelectorAll(".btn-scene-delete").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            apiPost("/api/scenes/delete", { id: btn.getAttribute("data-id") }, () => loadScenes());
+        });
+    });
+}
+
+function loadScenes() {
+    ajaxGet("/api/scenes", (data) => renderScenesList(data.scenes || []));
+}
+
+function setupSceneActions() {
+    const saveBtn = document.getElementById("adminSceneSaveBtn");
+    if (saveBtn) {
+        saveBtn.addEventListener("click", () => {
+            const actions = collectSceneActionsFromForm();
+            if (!Object.keys(actions).length) {
+                showMessage("Отметьте хотя бы один блок для сценария", true);
+                return;
+            }
+            apiPost("/api/scenes/save", {
+                id: document.getElementById("sceneEditId")?.value || "",
+                name: document.getElementById("sceneName")?.value || "Новый сценарий",
+                date: document.getElementById("sceneDate")?.value || "",
+                time: document.getElementById("sceneTime")?.value || "",
+                actions,
+            }, () => {
+                resetSceneForm();
+                loadScenes();
+                connectAllThings();
+            });
+        });
+    }
+    const resetBtn = document.getElementById("adminSceneResetBtn");
+    if (resetBtn) resetBtn.addEventListener("click", resetSceneForm);
+}
+
+function initDevicePage() {
     setupRgbPreview("lampR", "lampG", "lampB", "lampColorPreview", "lampColorValue");
     setupRgbPreview("userLampR", "userLampG", "userLampB", "userLampColorPreview", "userLampColorValue");
-    updateDateTimeLocal();
-    setInterval(updateDateTimeLocal, 1000);
+    setupLightingBrightnessLive();
     setupControlActions();
+    setupSceneActions();
     connectAllThings();
-    setInterval(connectAllThings, 10000);
-
+    setInterval(connectAllThings, 5000);
+    if (document.getElementById("scenesList")) loadScenes();
+    if (document.getElementById("analysisStats")) {
+        refreshAnalysisPanel();
+        setInterval(refreshAnalysisPanel, 5000);
+    }
+    if (document.getElementById("temperatureChart")) {
+        loadTemperatureChart();
+        setInterval(loadTemperatureChart, 5000);
+    }
     document
         .querySelectorAll(
             "#kettleTemp, #curtainLevel, #lightPower, #lightLevel, #lampR, #lampG, #lampB, #userLampR, #userLampG, #userLampB, #homeTargetTemp, #homeTargetHumidity"
         )
         .forEach((input) => input.addEventListener("input", markInputDirty));
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    setupThemeToggle();
+    setupSummaryToggles();
+    updateDateTimeLocal();
+    setInterval(updateDateTimeLocal, 1000);
+    if (document.getElementById("kettleTemp") || document.getElementById("curtainLevel")) {
+        initDevicePage();
+    }
 });

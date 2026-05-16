@@ -1,12 +1,8 @@
 {
-  "Temperature": [
+  "Humidity": [
     {
-      "timeStamp": "2026-05-16 11:48:15",
-      "temperature": 22.5
-    },
-    {
-      "timeStamp": "2026-05-16 11:48:15",
-      "temperature": 23.0
+      "timeStamp": "2026-05-16 12:57:17",
+      "humidity": 40.0
     }
   ]
 }

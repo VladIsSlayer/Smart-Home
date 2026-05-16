@@ -1,4 +1,12 @@
+import sys
+
 from flask import Flask, jsonify, render_template, request
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 import things
 
@@ -6,11 +14,11 @@ app = Flask(__name__, template_folder="server", static_folder="server", static_u
 
 system = things.build_system()
 devices = system["devices"]
+scene_manager = system["scene_manager"]
 automation = system["automation"]
 logger = system["logger"]
 
 robot, curtains, kettle, temperature, humidity, lighting = devices
-
 
 def _run_automation() -> list[str]:
     return automation.run_after_sensor_update()
@@ -122,6 +130,7 @@ def control_smart_lighting():
     return jsonify(lighting.control(request))
 
 
+
 @app.route("/api/analysis")
 def api_analysis():
     return jsonify({"ok": True, "analysis": _analysis_payload()})
@@ -133,5 +142,44 @@ def api_chart_temperature():
     return jsonify({"ok": True, "chart": chart})
 
 
+@app.route("/api/scenes", methods=["GET"])
+def api_scenes_list():
+    return jsonify({"ok": True, "scenes": scene_manager.list_scenes()})
+
+
+@app.route("/api/scenes/save", methods=["POST"])
+def api_scenes_save():
+    payload = request.get_json(silent=True) or {}
+    scene = scene_manager.save_scene(payload)
+    return jsonify({"ok": True, "message": f"Сценарий «{scene['name']}» сохранён", "scene": scene})
+
+
+@app.route("/api/scenes/apply", methods=["POST"])
+def api_scenes_apply():
+    payload = request.get_json(silent=True) or {}
+    scene_id = str(payload.get("id", "")).strip()
+    if not scene_id:
+        return jsonify({"ok": False, "message": "Не указан id сценария"})
+    messages = scene_manager.apply_scene(scene_id, robot, curtains, kettle, temperature, humidity, lighting)
+    if messages and messages[0].startswith("Сценарий '"):
+        return jsonify({"ok": False, "message": messages[0]})
+    scene = scene_manager.get_scene(scene_id)
+    return jsonify({
+        "ok": True,
+        "message": f"Сценарий «{scene['name'] if scene else scene_id}» применён",
+        "details": messages,
+    })
+
+
+@app.route("/api/scenes/delete", methods=["POST"])
+def api_scenes_delete():
+    payload = request.get_json(silent=True) or {}
+    scene_id = str(payload.get("id", "")).strip()
+    if scene_manager.delete_scene(scene_id):
+        return jsonify({"ok": True, "message": "Сценарий удалён"})
+    return jsonify({"ok": False, "message": "Нельзя удалить встроенный или неизвестный сценарий"})
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    # На Windows debug+reloader даёт WinError 10038 (сокет не сокет) в serve_forever
+    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False, threaded=True)

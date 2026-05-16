@@ -1,0 +1,113 @@
+{
+  "scenes": [
+    {
+      "id": "warm-evening",
+      "name": "Теплый вечер",
+      "date": "",
+      "time": "20:00",
+      "builtin": true,
+      "actions": {
+        "lighting": {
+          "on": true,
+          "brightness": 45,
+          "r": 255,
+          "g": 160,
+          "b": 80
+        },
+        "curtains": {
+          "percent": 25
+        },
+        "kettle": {
+          "action": "target",
+          "target_temp": 75
+        },
+        "temperature": {
+          "target": 23.0
+        },
+        "humidity": {
+          "target": 48.0
+        }
+      }
+    },
+    {
+      "id": "morning",
+      "name": "Утро в лесу",
+      "date": "2026-05-21",
+      "time": "07:30",
+      "builtin": true,
+      "actions": {
+        "lighting": {
+          "on": true,
+          "brightness": 70,
+          "r": 255,
+          "g": 180,
+          "b": 90
+        },
+        "curtains": {
+          "percent": 84
+        },
+        "kettle": {
+          "action": "target",
+          "target_temp": 90
+        },
+        "temperature": {
+          "target": 26
+        },
+        "humidity": {
+          "target": 60
+        }
+      }
+    },
+    {
+      "id": "away",
+      "name": "Экономия",
+      "date": "",
+      "time": "",
+      "builtin": true,
+      "actions": {
+        "lighting": {
+          "on": false,
+          "brightness": 0,
+          "r": 200,
+          "g": 200,
+          "b": 200
+        },
+        "curtains": {
+          "percent": 0
+        },
+        "temperature": {
+          "target": 20.0
+        },
+        "humidity": {
+          "target": 45.0
+        },
+        "kettle": {
+          "action": "off"
+        }
+      }
+    },
+    {
+      "id": "cleaning",
+      "name": "Уборка",
+      "date": "",
+      "time": "10:00",
+      "builtin": true,
+      "actions": {
+        "vacuum": {
+          "action": "start",
+          "mode": "auto"
+        },
+        "curtains": {
+          "percent": 80
+        },
+        "lighting": {
+          "on": true,
+          "brightness": 60,
+          "r": 255,
+          "g": 255,
+          "b": 255
+        }
+      }
+    }
+  ]
+}

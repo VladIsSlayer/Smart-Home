@@ -295,6 +295,35 @@ ul {
     box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.25);
 }
 
+.scenes-list {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+}
+
+.scenes-list li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border: 1px solid #dbe3f4;
+    border-radius: 10px;
+    background: #f8fbff;
+}
+
+.scenes-list .scene-meta {
+    flex: 1 1 180px;
+    font-size: 0.92rem;
+    color: #4a5568;
+}
+
+.scenes-list .scene-title {
+    font-weight: 600;
+    color: #1a202c;
+}
+
 .device-manager {
     border: 1px solid #dbe3f4;
     border-radius: 10px;
